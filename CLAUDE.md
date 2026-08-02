@@ -1,81 +1,88 @@
 # CLAUDE.md
 
-Bu dosya, bu repo üzerinde çalışırken Claude Code'a rehberlik eder. Kurulum ve komutlar
-README.md'de; burada yalnız KURALLAR var.
+> 🇹🇷 Türkçesi: [CLAUDE.TR.md](CLAUDE.TR.md) — insan okuru için çeviri. Tools read THIS file;
+> when the rules change, update both.
 
-## Proje
+Guidance for Claude Code when working in this repo. Setup and commands live in README.md;
+this file holds the RULES only.
 
-Express + TypeScript + Drizzle (PostgreSQL) API iskeleti, pnpm monorepo. `apps/api` çalışır
-durumda; `apps/web` boştur (framework proje başında seçilir), `packages/shared` iki uç arasındaki
-zod sözleşmesini ve API istemcisini tutar.
+## Project
+
+An Express + TypeScript + Drizzle (PostgreSQL) API skeleton, in a pnpm monorepo. `apps/api` is
+ready to run; `apps/web` is empty (the framework is chosen when a project starts) and
+`packages/shared` holds the zod contract and API client shared by both ends.
 
 ## Stack
 
-| Katman  | Seçim                                                                             |
-| ------- | --------------------------------------------------------------------------------- |
-| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (`.js` uzantılı import)    |
-| DB      | PostgreSQL 16 + Drizzle ORM                                                       |
-| Auth    | JWT Bearer (access 15 dk + refresh 30 gün, DB'de izlenir), rol: `admin` \| `user` |
-| Deploy  | Docker Compose; Traefik compose'da DEĞİL, VPS'teki paylaşılan instance            |
+| Layer   | Choice                                                                              |
+| ------- | ----------------------------------------------------------------------------------- |
+| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)         |
+| DB      | PostgreSQL 16 + Drizzle ORM                                                          |
+| Auth    | JWT Bearer (access 15 min + refresh 30 days, tracked in the DB), roles: `admin` \| `user` |
+| Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance    |
 
-## API'nin iç düzeni (modül-birinci)
+## How the API is organised (module-first)
 
-`apps/api/src` katmana göre değil MODÜLE göre bölünür — bir işi yaparken tek klasör açılır.
+`apps/api/src` is split by MODULE, not by layer — one task, one folder to open.
 
 ```
 src/
-├─ index.ts   bootstrap (http + ws + job'lar)
-├─ app.ts     express kurulumu
-├─ router.ts  TÜM mount'lar, kitleye göre gruplu (anonim / authenticated / admin)
-├─ core/      modüle özel HİÇBİR şey yok: config, db, http/middleware, observability
-│             (log YAZMA), realtime, storage, utils
+├─ index.ts   bootstrap (http + ws + jobs)
+├─ app.ts     express setup
+├─ router.ts  EVERY mount, grouped by audience (anonymous / authenticated / admin)
+├─ core/      NOTHING module-specific: config, db, http/middleware, observability
+│             (log WRITING), realtime, storage, utils
 └─ modules/   auth/ example/ uploads/
 ```
 
-Modül içi iskelet: `<ad>.service.ts` (DB'yle konuşan tek katman) + `<ad>.controller.ts` +
-`<ad>.routes.ts` + `index.ts`. Bir modül birden fazla kitleye hizmet ediyorsa HTTP yüzeyi dosya
-adıyla ayrılır (`public.routes.ts`); servis ve şema tek kopya kalır.
+Inside a module: `<name>.service.ts` (the only layer that talks to the DB) +
+`<name>.controller.ts` + `<name>.routes.ts` + `index.ts`. When a module serves more than one
+audience, the HTTP surface is split by file (`public.routes.ts`) while the service and the
+schema stay single copies.
 
-**İki kural (asla ihlal etme):**
+**Two rules (never break them):**
 
-1. **Modüller birbirine yalnız `index.ts`'ten erişir.** `modules/x/` içinden
-   `modules/y/y.service.js` import edilmez.
-2. **`core` hiçbir modüle bağlı değildir.** Bir core dosyası modüle ihtiyaç duyuyorsa tasarım
-   yanlıştır (log yazma core'da, log okuma modülde).
+1. **Modules reach each other only through `index.ts`.** From `modules/x/` you never import
+   `modules/y/y.service.js`.
+2. **`core` depends on no module.** If a core file needs one, the design is wrong (writing logs
+   belongs in core, reading them belongs in a module).
 
-`routes` yalnız path↔handler + middleware bağlar; `controller` req/res işler (zod parse dahil)
-ve servisi çağırır. **Express 5: async handler'daki hata otomatik errorHandler'a düşer,
-controller'da try/catch YAZILMAZ.** Servisler hata için `HttpError` fırlatır (mesaj sabit bir
-KOD'dur, serbest metin `detail`'e gider).
+`routes` only binds path ↔ handler + middleware; `controller` handles req/res (zod parsing
+included) and calls the service. **Express 5: an error thrown in an async handler reaches
+errorHandler by itself — controllers DO NOT write try/catch.** Services throw `HttpError`
+(the message is a stable CODE, free-form text goes into `detail`).
 
-Validator'lar zod ile ve mümkünse `packages/shared`'dan import edilir — sözleşme frontend'le
-paylaşılır, modüle taşınmaz.
+Validators are written with zod and imported from `packages/shared` whenever possible — the
+contract is shared with the frontend, so it does not move into a module.
 
-## Veritabanı
+## Database
 
-- Tablolar `core/db/schema/<tablo-adi>.ts`, her dosyada bir tablo, hepsi `schema/index.ts`'ten
-  re-export edilir (drizzle-kit'in girişi budur).
-- **SQL elle yazılmaz:** şema düzenlenir → `pnpm --filter api db:generate` → üretilen SQL okunur
-  → `db:migrate`. Migration'lar sıralı, atlama yok, rollback yok; geri dönüş yeni migration'la.
-- Enum listeleri `shared`'da tanımlanır, `pgEnum` onları kullanır — tip iki uçta ayrışamaz.
-- Silme yerine pasifleştirme (`is_active`).
+- Tables live in `core/db/schema/<table-name>.ts`, one table per file, all re-exported from
+  `schema/index.ts` (drizzle-kit's entry point).
+- **SQL is never written by hand:** edit the schema → `pnpm --filter api db:generate` → read the
+  generated SQL → `db:migrate`. Migrations are sequential, never skipped, never rolled back;
+  you go back with a new migration.
+- Enum lists are declared in `shared` and consumed by `pgEnum` — the type cannot drift apart
+  between the two ends.
+- Deactivate (`is_active`) instead of deleting.
 
-## Baştan kabul edilen kurallar
+## Non-negotiables
 
-- Public (auth'suz) her uç rate-limit'li ve sıkı doğrulamalı olmak zorunda; yanıt gövdesi
-  gereğinden fazla alan içermez.
-- Sahiplik her sorgunun filtresidir — bir satır yalnız id ile erişilebilir olmamalı. Başkasının
-  satırı için 403 değil 404 döner (varlığını sızdırma).
-- Refresh token deseni bozulmadan korunur: rotation + reuse detection + family revoke.
-  Refresh ucuna cache/retry konmaz.
-- Tutar/kritik hesap yalnız sunucuda, transaction içinde; istemciden gelen hesaplanmış değere
-  güvenilmez.
-- Diske dokunan tek dosya `core/storage/storage.service.ts`.
-- Tek API instance varsayımı (WS state in-memory) — ölçek gerekirse önce Redis pub/sub.
-- Yüklenen dosyalar `UPLOAD_DIR` altında; prod'da volume yedeklemesi pgdata kadar önemli.
+- Every public (unauthenticated) endpoint must be rate-limited and strictly validated, and its
+  response body must not carry more fields than it needs to.
+- Ownership is part of every query — a row must never be reachable by id alone. Someone else's
+  row returns 404, not 403 (do not leak that it exists).
+- The refresh token pattern stays intact: rotation + reuse detection + family revoke. No cache
+  and no auto-retry on the refresh endpoint.
+- Money and other critical arithmetic happens only on the server, inside a transaction; a value
+  computed by the client is never trusted.
+- `core/storage/storage.service.ts` is the only file that touches the disk.
+- A single API instance is assumed (WS state is in memory) — scaling out means Redis pub/sub first.
+- Uploaded files live under `UPLOAD_DIR`; in production, backing up that volume matters as much
+  as pgdata.
 
-## Geliştirme
+## Development
 
-Claude Code dev server'ları kendiliğinden başlatmaz — `pnpm dev`'i kullanıcı kendi terminalinde
-çalıştırır. Doğrulama için çalışan sunucu gerekiyorsa önce port kontrol edilir
-(`lsof -nP -iTCP:3000 -sTCP:LISTEN`), kapalıysa kullanıcıya sorulur.
+Claude Code does not start dev servers on its own — the user runs `pnpm dev` in their own
+terminal. If verifying something genuinely needs a running server, check the port first
+(`lsof -nP -iTCP:3000 -sTCP:LISTEN`) and ask the user if nothing is listening.

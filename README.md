@@ -198,8 +198,8 @@ Uploaded files persist in the `uploads` volume.
 
 [CLAUDE.md](CLAUDE.md) in the repo root holds this skeleton's rules — module boundaries, no
 try/catch in Express 5 controllers, the migration flow, the refresh token pattern — in a form
-meant to be read by a machine. (The file itself is written in Turkish; translate it if your team
-works in another language.)
+meant to be read by a machine. [CLAUDE.TR.md](CLAUDE.TR.md) is a Turkish translation for human
+readers — tools read `CLAUDE.md`, so keep both in sync when the rules change.
 
 - **Using Claude Code?** Nothing to do: the file is loaded automatically in every session.
 - **Using something else?** (Cursor, Copilot, Codex, Gemini…) The file is not picked up on its

@@ -197,7 +197,8 @@ Postgres yalnız `internal` ağında; dışarıdan ve Traefik'ten erişilemez. Y
 
 Repo kökündeki [CLAUDE.md](CLAUDE.md) bu iskeletin kurallarını (modül sınırları, Express 5'te
 try/catch yazılmaması, migration akışı, refresh token deseni) makine tarafından okunacak biçimde
-tutar.
+tutar. Dosya İngilizce; Türkçesi [CLAUDE.TR.md](CLAUDE.TR.md)'de duruyor — araçlar `CLAUDE.md`'yi
+okuduğu için kural değiştiğinde ikisi birden güncellenmeli.
 
 - **Claude Code kullanıyorsan** hiçbir şey yapmana gerek yok: dosya her oturumda otomatik
   okunur.
