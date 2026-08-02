@@ -1,0 +1,16 @@
+# Development: Postgres only. Apps run on the host with `pnpm dev`.
+services:
+    postgres:
+        image: postgres:16-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${DB_NAME:-app}
+            POSTGRES_USER: ${DB_USER:-app}
+            POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+        ports:
+            - "${DB_PORT:-5432}:5432"
+        volumes:
+            - pgdata_dev:/var/lib/postgresql/data
+
+volumes:
+    pgdata_dev:

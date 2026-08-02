@@ -1,0 +1,97 @@
+# Production. TLS is handled by a Traefik instance that already runs on the VPS and owns the
+# external `traefik-net` network — this file does NOT start Traefik. Entrypoint name `https`,
+# cert resolver name `letsencrypt`; rename them if your instance uses different ones.
+#
+# Docker's default json-file driver never rotates — stdout grows forever. ~30 MB cap per service.
+x-logging: &default-logging
+    driver: json-file
+    options:
+        max-size: "10m"
+        max-file: "3"
+
+name: app
+
+services:
+    api:
+        container_name: app_api
+        build: { context: ., dockerfile: apps/api/Dockerfile }
+        restart: unless-stopped
+        logging: *default-logging
+        env_file: .env
+        environment:
+            NODE_ENV: production
+            # Overrides the localhost URL in .env with the compose network host.
+            DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+            CORS_ORIGIN: https://${DOMAIN}
+            # Uploaded files go to a persistent volume — rebuilding the image must not wipe them.
+            UPLOAD_DIR: /app/uploads
+        volumes: [uploads:/app/uploads]
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - traefik-net
+            - internal
+        labels:
+            - traefik.enable=true
+            - traefik.docker.network=traefik-net
+            # /api and /ws go to the API; everything else falls through to `web` (priority 1).
+            # WebSocket upgrades pass through without extra configuration.
+            - traefik.http.routers.app-api.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`))
+            - traefik.http.routers.app-api.priority=100
+            - traefik.http.routers.app-api.entrypoints=https
+            - traefik.http.routers.app-api.tls=true
+            - traefik.http.routers.app-api.tls.certresolver=letsencrypt
+            - traefik.http.services.app-api.loadbalancer.server.port=3000
+
+    # Uncomment once apps/web exists and has its own Dockerfile (see README).
+    # env_file is deliberately absent — the frontend container must not see JWT/DB secrets.
+    # web:
+    #     container_name: app_web
+    #     build: { context: ., dockerfile: apps/web/Dockerfile }
+    #     restart: unless-stopped
+    #     logging: *default-logging
+    #     environment:
+    #         PORT: 3001
+    #         ORIGIN: https://${DOMAIN}
+    #     networks:
+    #         - traefik-net
+    #     labels:
+    #         - traefik.enable=true
+    #         - traefik.docker.network=traefik-net
+    #         - traefik.http.routers.app-web.rule=Host(`${DOMAIN}`)
+    #         - traefik.http.routers.app-web.priority=1
+    #         - traefik.http.routers.app-web.entrypoints=https
+    #         - traefik.http.routers.app-web.tls=true
+    #         - traefik.http.routers.app-web.tls.certresolver=letsencrypt
+    #         - traefik.http.services.app-web.loadbalancer.server.port=3001
+
+    postgres:
+        container_name: app_db
+        image: postgres:16-alpine
+        restart: unless-stopped
+        logging: *default-logging
+        environment:
+            POSTGRES_DB: ${DB_NAME}
+            POSTGRES_USER: ${DB_USER}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+        # Internal network only — unreachable from Traefik and from the outside world.
+        networks:
+            - internal
+        volumes: [pgdata:/var/lib/postgresql/data]
+
+networks:
+    traefik-net:
+        external: true
+    internal:
+        driver: bridge
+        internal: true
+
+volumes:
+    pgdata:
+    uploads:
