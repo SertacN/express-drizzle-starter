@@ -1,4 +1,4 @@
-# express-starter
+# express-drizzle-starter
 
 > 🇬🇧 English version: [README.md](README.md)
 

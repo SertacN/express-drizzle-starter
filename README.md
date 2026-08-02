@@ -1,4 +1,4 @@
-# express-starter
+# express-drizzle-starter
 
 > 🇹🇷 Bu dosyanın Türkçesi: [README-TR.md](README-TR.md)
 
