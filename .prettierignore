@@ -1,0 +1,8 @@
+node_modules
+dist
+build
+coverage
+pnpm-lock.yaml
+
+# drizzle-kit üretir — elle veya formatter ile dokunulmaz
+apps/api/src/core/db/migrations
