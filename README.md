@@ -38,14 +38,14 @@ curl -X POST localhost:3000/api/v1/auth/login \
 
 ## Commands
 
-| Command                                                        | Where | What it does                                       |
-| -------------------------------------------------------------- | ----- | -------------------------------------------------- |
-| `pnpm dev`                                                     | root  | runs every package that has a `dev` script, in parallel |
-| `pnpm build` / `pnpm check`                                    | root  | builds / typechecks every package                  |
-| `pnpm --filter api db:generate`                                | api   | generates a migration from the schema              |
-| `pnpm --filter api db:migrate`                                 | api   | applies pending migrations                         |
-| `pnpm --filter api db:studio`                                  | api   | opens Drizzle Studio                               |
-| `pnpm --filter api user:create <email> <password> <name> [role]` | api   | creates a user                                     |
+| Command                                                          | Where | What it does                                            |
+| ---------------------------------------------------------------- | ----- | ------------------------------------------------------- |
+| `pnpm dev`                                                       | root  | runs every package that has a `dev` script, in parallel |
+| `pnpm build` / `pnpm check`                                      | root  | builds / typechecks every package                       |
+| `pnpm --filter api db:generate`                                  | api   | generates a migration from the schema                   |
+| `pnpm --filter api db:migrate`                                   | api   | applies pending migrations                              |
+| `pnpm --filter api db:studio`                                    | api   | opens Drizzle Studio                                    |
+| `pnpm --filter api user:create <email> <password> <name> [role]` | api   | creates a user                                          |
 
 ## Layout
 
@@ -193,6 +193,42 @@ docker compose exec api node dist/core/db/migrate.js
 
 Postgres sits on the `internal` network only; neither the outside world nor Traefik can reach it.
 Uploaded files persist in the `uploads` volume.
+
+## Commits
+
+Conventional Commits — `<type>(<scope>): <subject>`. Lowercase, imperative ("add", not "added"),
+no trailing period, under ~72 characters.
+
+| Type       | When                                                    |
+| ---------- | ------------------------------------------------------- |
+| `feat`     | a new endpoint, module, page or user-visible capability |
+| `fix`      | a bug in something that already worked                  |
+| `docs`     | README, CLAUDE.md, comments                             |
+| `refactor` | same behaviour, different code                          |
+| `chore`    | dependencies, config, tooling, deleting dead code       |
+| `build`    | Dockerfile, compose, tsconfig — the build itself        |
+| `test`     | tests only                                              |
+| `style`    | formatting only, no logic (a prettier run)              |
+| `perf`     | a change made for speed                                 |
+
+Scope is the part of the repo the commit touches: `api`, `web`, `shared`, `db`, or the module
+name when that is narrower — `notes`, `auth`, `uploads`.
+
+```
+feat(notes): add the notes module with CRUD endpoints
+feat(db): add notes table and note_color enum
+feat(shared): add note types, constants and api-client service
+feat(web): add the /notes route
+fix(notes): stop a title-only PATCH from resetting the colour
+fix(auth): clear the refresh cookie on the path it was set on
+chore: remove the example module
+chore(deps): bump drizzle-orm to 0.45.2
+docs: rewrite the README for the practice-apps layout
+build(docker): pin the postgres image to 16.4
+```
+
+A new app lands as several commits, not one — the shared contract, the table and migration, the
+module, the frontend route. Each one should build on its own.
 
 ## Working with AI tools (CLAUDE.md)
 

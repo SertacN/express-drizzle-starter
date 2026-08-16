@@ -14,12 +14,12 @@ ready to run; `apps/web` is empty (the framework is chosen when a project starts
 
 ## Stack
 
-| Layer   | Choice                                                                              |
-| ------- | ----------------------------------------------------------------------------------- |
-| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)         |
-| DB      | PostgreSQL 16 + Drizzle ORM                                                          |
+| Layer   | Choice                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------- |
+| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)              |
+| DB      | PostgreSQL 16 + Drizzle ORM                                                               |
 | Auth    | JWT Bearer (access 15 min + refresh 30 days, tracked in the DB), roles: `admin` \| `user` |
-| Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance    |
+| Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance         |
 
 ## How the API is organised (module-first)
 
@@ -80,6 +80,23 @@ contract is shared with the frontend, so it does not move into a module.
 - A single API instance is assumed (WS state is in memory) — scaling out means Redis pub/sub first.
 - Uploaded files live under `UPLOAD_DIR`; in production, backing up that volume matters as much
   as pgdata.
+
+## Commits
+
+Conventional Commits — `<type>(<scope>): <subject>`. Lowercase, imperative, no trailing period,
+under ~72 characters. Types: `feat` `fix` `docs` `refactor` `chore` `build` `test` `style`
+`perf`. Scope is `api`, `web`, `shared`, `db`, or the module name when that is narrower.
+
+```
+feat(notes): add the notes module with CRUD endpoints
+fix(auth): clear the refresh cookie on the path it was set on
+chore(deps): bump drizzle-orm to 0.45.2
+```
+
+Suggesting these is welcome (see the working agreement). Describe what the diff actually does —
+read it first rather than restating the file names. A new app arrives as several commits (shared
+contract, table + migration, module, frontend route), so propose the split when the staged
+change covers more than one of those.
 
 ## Development
 

@@ -193,6 +193,42 @@ docker compose exec api node dist/core/db/migrate.js
 Postgres yalnız `internal` ağında; dışarıdan ve Traefik'ten erişilemez. Yüklenen dosyalar
 `uploads` volume'ünde kalıcıdır.
 
+## Commit'ler
+
+Conventional Commits — `<tip>(<kapsam>): <konu>`. Küçük harf, emir kipi ve İngilizce ("add",
+"added" değil), sonda nokta yok, ~72 karakteri geçmesin.
+
+| Tip        | Ne zaman                                                          |
+| ---------- | ----------------------------------------------------------------- |
+| `feat`     | yeni endpoint, modül, sayfa ya da kullanıcıya görünen bir yetenek |
+| `fix`      | zaten çalışan bir şeydeki hata                                    |
+| `docs`     | README, CLAUDE.md, yorumlar                                       |
+| `refactor` | davranış aynı, kod farklı                                         |
+| `chore`    | bağımlılık, config, araç gereç, ölü kod silme                     |
+| `build`    | Dockerfile, compose, tsconfig — build'in kendisi                  |
+| `test`     | sadece test                                                       |
+| `style`    | sadece biçim, mantık yok (prettier çalıştırmak)                   |
+| `perf`     | hız için yapılan değişiklik                                       |
+
+Kapsam, commit'in dokunduğu yer: `api`, `web`, `shared`, `db` — ya da daha darsa modül adı:
+`notes`, `auth`, `uploads`.
+
+```
+feat(notes): add the notes module with CRUD endpoints
+feat(db): add notes table and note_color enum
+feat(shared): add note types, constants and api-client service
+feat(web): add the /notes route
+fix(notes): stop a title-only PATCH from resetting the colour
+fix(auth): clear the refresh cookie on the path it was set on
+chore: remove the example module
+chore(deps): bump drizzle-orm to 0.45.2
+docs: rewrite the README for the practice-apps layout
+build(docker): pin the postgres image to 16.4
+```
+
+Yeni bir uygulama tek commit değil, birkaç commit olarak iniyor — shared sözleşmesi, tablo ve
+migration, modül, frontend route'u. Her biri kendi başına build olmalı.
+
 ## Yapay zeka araçlarıyla çalışma (CLAUDE.md)
 
 Repo kökündeki [CLAUDE.md](CLAUDE.md) bu iskeletin kurallarını (modül sınırları, Express 5'te
