@@ -28,7 +28,12 @@ const FILE_NAME_PATTERN = /^[a-z]+-[0-9a-f]{24}\.[a-z0-9]+$/;
  * Writes data into the scope's directory under a unique name and returns its public URL.
  * The name changes on every upload, which is what makes the files safe to cache immutably.
  */
-export async function saveFile(scope: string, prefix: string, extension: string, data: Buffer): Promise<string> {
+export async function saveFile(
+    scope: string,
+    prefix: string,
+    extension: string,
+    data: Buffer,
+): Promise<string> {
     const dir = path.join(uploadsRoot(), scope);
     await fs.mkdir(dir, { recursive: true });
     const fileName = `${prefix}-${randomBytes(12).toString("hex")}.${extension}`;

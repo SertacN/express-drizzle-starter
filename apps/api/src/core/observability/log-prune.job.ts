@@ -15,7 +15,10 @@ export function startLogPruneJob() {
         try {
             const deleted = await pruneOldLogs();
             if (deleted > 0) {
-                logger.info("log-prune", `${deleted} log rows older than ${LOG_RETENTION_DAYS}d deleted`);
+                logger.info(
+                    "log-prune",
+                    `${deleted} log rows older than ${LOG_RETENTION_DAYS}d deleted`,
+                );
             }
         } catch (err) {
             logger.error("log-prune", "prune failed", err);

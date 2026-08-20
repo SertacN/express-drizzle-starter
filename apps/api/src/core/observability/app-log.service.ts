@@ -66,7 +66,9 @@ async function insert(values: Record<string, unknown>) {
         await db.insert(appLogs).values({
             ...values,
             errorMessage:
-                typeof values.errorMessage === "string" ? values.errorMessage.slice(0, MAX_ERROR_LENGTH) : null,
+                typeof values.errorMessage === "string"
+                    ? values.errorMessage.slice(0, MAX_ERROR_LENGTH)
+                    : null,
         } as typeof appLogs.$inferInsert);
     } catch (err) {
         // CAREFUL: no logger here. The logger tries to write errors to the DB, and we are in
@@ -78,6 +80,9 @@ async function insert(values: Record<string, unknown>) {
 /** Deletes rows past the retention window; returns how many went. */
 export async function pruneOldLogs(): Promise<number> {
     const cutoff = new Date(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    const deleted = await db.delete(appLogs).where(lte(appLogs.createdAt, cutoff)).returning({ id: appLogs.id });
+    const deleted = await db
+        .delete(appLogs)
+        .where(lte(appLogs.createdAt, cutoff))
+        .returning({ id: appLogs.id });
     return deleted.length;
 }

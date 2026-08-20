@@ -79,7 +79,10 @@ export async function updateExample(userId: string, id: string, input: ExampleUp
  */
 export async function deactivateExample(userId: string, id: string) {
     const row = await getExample(userId, id);
-    await db.update(examples).set({ isActive: false, updatedAt: new Date() }).where(eq(examples.id, id));
+    await db
+        .update(examples)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(examples.id, id));
     await deleteFile(userId, row.imageUrl);
 }
 

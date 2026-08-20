@@ -18,7 +18,8 @@ function toQuery(params: Record<string, string | number | undefined>): string {
 
 export function createExampleService(request: RequestFn) {
     return {
-        list: (query: Partial<ExampleListQuery> = {}) => request<ExampleList>(`/api/v1/examples${toQuery(query)}`),
+        list: (query: Partial<ExampleListQuery> = {}) =>
+            request<ExampleList>(`/api/v1/examples${toQuery(query)}`),
         get: (id: string) => request<Example>(`/api/v1/examples/${id}`),
         create: (input: ExampleCreateInput) =>
             request<Example>("/api/v1/examples", {

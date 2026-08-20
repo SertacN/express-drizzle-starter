@@ -4,7 +4,12 @@ import type { AuthUser, ProfileUpdateInput, ProfileUpdateResponse } from "shared
 import { db } from "../../core/db/client.js";
 import { refreshTokens, users } from "../../core/db/schema/index.js";
 import { HttpError } from "../../core/http/middleware/errorHandler.js";
-import { REFRESH_TOKEN_TTL_MS, signAccessToken, signRefreshToken, verifyRefreshToken } from "../../core/utils/jwt.js";
+import {
+    REFRESH_TOKEN_TTL_MS,
+    signAccessToken,
+    signRefreshToken,
+    verifyRefreshToken,
+} from "../../core/utils/jwt.js";
 import { hashPassword, verifyPassword } from "../../core/utils/password.js";
 import { isWithinReuseGrace } from "../../core/utils/refresh-token.js";
 
@@ -60,7 +65,11 @@ export async function register(input: { email: string; password: string; name: s
 }
 
 export async function login(email: string, password: string) {
-    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()))
+        .limit(1);
 
     // Same error for "no such user" and "wrong password" — never leak which one it was.
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
@@ -100,7 +109,13 @@ export async function refreshSession(refreshToken: string) {
     const [claimed] = await db
         .update(refreshTokens)
         .set({ usedAt: now })
-        .where(and(eq(refreshTokens.id, payload.jti), isNull(refreshTokens.usedAt), isNull(refreshTokens.revokedAt)))
+        .where(
+            and(
+                eq(refreshTokens.id, payload.jti),
+                isNull(refreshTokens.usedAt),
+                isNull(refreshTokens.revokedAt),
+            ),
+        )
         .returning();
 
     const [user] = await db.select().from(users).where(eq(users.id, payload.sub)).limit(1);
@@ -108,7 +123,11 @@ export async function refreshSession(refreshToken: string) {
 
     if (!claimed) {
         // The row is either missing (forged/pruned) or already used/revoked.
-        const [existing] = await db.select().from(refreshTokens).where(eq(refreshTokens.id, payload.jti)).limit(1);
+        const [existing] = await db
+            .select()
+            .from(refreshTokens)
+            .where(eq(refreshTokens.id, payload.jti))
+            .limit(1);
         if (!existing) throw new HttpError(401, "invalid_refresh_token");
 
         // Grace window: a token handed out seconds ago is usually a race (a retried request,
@@ -135,7 +154,11 @@ export async function logout(refreshToken: string) {
     } catch {
         return;
     }
-    const [row] = await db.select().from(refreshTokens).where(eq(refreshTokens.id, payload.jti)).limit(1);
+    const [row] = await db
+        .select()
+        .from(refreshTokens)
+        .where(eq(refreshTokens.id, payload.jti))
+        .limit(1);
     if (row) await revokeFamily(row.familyId);
 }
 
@@ -146,7 +169,10 @@ export async function logout(refreshToken: string) {
  * tab making the request, whose access token could not be refreshed 15 minutes later. So the
  * caller gets a FRESH pair back: other devices are signed out, this session stays.
  */
-export async function updateOwnProfile(userId: string, input: ProfileUpdateInput): Promise<ProfileUpdateResponse> {
+export async function updateOwnProfile(
+    userId: string,
+    input: ProfileUpdateInput,
+): Promise<ProfileUpdateResponse> {
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) throw new HttpError(401, "unauthorized");
 

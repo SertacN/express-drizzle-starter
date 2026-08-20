@@ -17,7 +17,12 @@ export async function storeImage(userId: string, file: Express.Multer.File): Pro
     try {
         data = await sharp(file.buffer)
             .rotate() // apply the EXIF orientation before it gets stripped
-            .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
+            .resize({
+                width: MAX_DIMENSION,
+                height: MAX_DIMENSION,
+                fit: "inside",
+                withoutEnlargement: true,
+            })
             .webp({ quality: 82 })
             .toBuffer();
     } catch {
