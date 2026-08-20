@@ -14,7 +14,8 @@
 	"scripts": {
 		"dev": "tsc --watch --preserveWatchOutput",
 		"build": "tsc",
-		"check": "tsc --noEmit"
+		"check": "tsc --noEmit",
+		"format": "prettier --write \"src/**/*.ts\""
 	},
 	"dependencies": {
 		"zod": "^4.4.3"

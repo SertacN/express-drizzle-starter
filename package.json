@@ -7,10 +7,14 @@
 		"dev": "pnpm --parallel -r dev",
 		"build": "pnpm -r build",
 		"check": "pnpm -r check",
-		"lint": "pnpm -r lint"
+		"lint": "pnpm -r lint",
+		"format": "pnpm -r format"
 	},
 	"engines": {
 		"node": ">=22"
 	},
-	"packageManager": "pnpm@11.9.0"
+	"packageManager": "pnpm@11.9.0",
+	"devDependencies": {
+		"prettier": "^3.9.6"
+	}
 }

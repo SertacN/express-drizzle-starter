@@ -1,0 +1,12 @@
+# Satır sonlarını depoda LF'e sabitler ve checkout'ta da LF verir; core.autocrlf'i ezer,
+# böylece Windows'ta CRLF ile gelen dosyalar Prettier'ın endOfLine: "lf" ayarına takılmaz.
+* text=auto eol=lf
+
+# İkili dosyalar dönüştürülmez.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
