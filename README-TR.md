@@ -103,8 +103,9 @@ Migration'lar sıralıdır, atlanmaz, geri alınmaz — geri dönüş yeni bir m
 Üretilen `.sql` dosyasını uygulamadan önce oku: Drizzle bir sütun yeniden adlandırmasını
 bazen "drop + add" olarak çözer ve bu veri kaybıdır.
 
-Silme yerine pasifleştirme (`is_active`) tercih edilir; geçmiş kayıtlar ve onlara bağlı satırlar
-korunur.
+Satırı silmek yerine yumuşak silmeyi (`is_deleted`) tercih et; böylece geçmiş ve o satıra referans
+veren kayıtlar hayatta kalır. Bunu `is_active`'ten ayrı tut: o, kullanıcıya görünen bir anahtardır
+(kapatılmış hesap, duraklatılmış satır) — ikisine birden ihtiyaç duyan tablo iki kolonu da taşır.
 
 ## Auth
 

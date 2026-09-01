@@ -104,7 +104,9 @@ Migrations are sequential, never skipped and never rolled back — you go back w
 migration. Read the generated `.sql` before applying it: Drizzle sometimes resolves a column
 rename as "drop + add", and that is data loss.
 
-Prefer deactivating (`is_active`) over deleting, so history and the rows referencing it survive.
+Prefer a soft delete (`is_deleted`) over removing a row, so history and the rows referencing it
+survive. Keep it separate from `is_active`, which is a user-facing switch (a disabled account, a
+paused row) — a table that needs both keeps both columns.
 
 ## Auth
 

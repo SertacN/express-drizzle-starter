@@ -48,7 +48,7 @@ CREATE TABLE "examples" (
 	"body" text,
 	"status" "example_status" DEFAULT 'draft' NOT NULL,
 	"image_url" text,
-	"is_active" boolean DEFAULT true NOT NULL,
+	"is_deleted" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );

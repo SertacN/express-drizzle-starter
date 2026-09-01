@@ -31,7 +31,7 @@ export function createExampleService(request: RequestFn) {
                 method: "PATCH",
                 body: JSON.stringify(input),
             }),
-        /** Soft delete — the row stays, `is_active` flips to false. */
+        /** Soft delete — the row stays, `is_deleted` flips to true. */
         remove: (id: string) => request<void>(`/api/v1/examples/${id}`, { method: "DELETE" }),
         /** Anonymous surface: published rows only, no token needed. */
         listPublished: () => request<Example[]>("/api/v1/public/examples"),

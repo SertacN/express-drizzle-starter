@@ -29,7 +29,7 @@ export const update: RequestHandler = async (req, res) => {
 
 export const remove: RequestHandler = async (req, res) => {
     const { id } = idParamSchema.parse(req.params);
-    await exampleService.deactivateExample(req.auth!.userId, id);
+    await exampleService.softDeleteExample(req.auth!.userId, id);
     res.status(204).end();
 };
 

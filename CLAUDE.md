@@ -64,7 +64,9 @@ contract is shared with the frontend, so it does not move into a module.
   you go back with a new migration.
 - Enum lists are declared in `shared` and consumed by `pgEnum` — the type cannot drift apart
   between the two ends.
-- Deactivate (`is_active`) instead of deleting.
+- Soft delete (`is_deleted`) instead of removing the row. `is_active` is a DIFFERENT thing —
+  a user-facing on/off switch (a disabled account, a row its owner paused). A table that needs
+  both carries both columns; one flag can never mean both.
 
 ## Non-negotiables
 

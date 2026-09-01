@@ -1,5 +1,5 @@
 {
-  "id": "acf972a2-487d-44c7-b9d3-0289255ce872",
+  "id": "4a1c85d3-015a-4385-861a-a44789d95a6b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -325,12 +325,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_active": {
-          "name": "is_active",
+        "is_deleted": {
+          "name": "is_deleted",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
         },
         "created_at": {
           "name": "created_at",

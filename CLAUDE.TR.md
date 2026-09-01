@@ -61,7 +61,9 @@ paylaşılır, modüle taşınmaz.
 - **SQL elle yazılmaz:** şema düzenlenir → `pnpm --filter api db:generate` → üretilen SQL okunur
   → `db:migrate`. Migration'lar sıralı, atlama yok, rollback yok; geri dönüş yeni migration'la.
 - Enum listeleri `shared`'da tanımlanır, `pgEnum` onları kullanır — tip iki uçta ayrışamaz.
-- Silme yerine pasifleştirme (`is_active`).
+- Satırı silmek yerine yumuşak sil (`is_deleted`). `is_active` BAŞKA bir şeydir — kullanıcıya
+  görünen açık/kapalı anahtarı (kapatılmış hesap, sahibinin duraklattığı bir satır). İkisine
+  birden ihtiyaç duyan tablo iki kolonu da taşır; tek bayrak ikisi birden olamaz.
 
 ## Baştan kabul edilen kurallar
 

@@ -11,7 +11,8 @@ export const users = pgTable("users", {
     passwordHash: text("password_hash").notNull(),
     name: text("name").notNull(),
     role: userRole("role").notNull().default("user"),
-    // Deactivate instead of delete: rows elsewhere reference this id and history must survive.
+    // The account switch, not a soft-delete flag: a disabled account fails login with
+    // account_disabled. Users are never removed — rows elsewhere reference this id.
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
