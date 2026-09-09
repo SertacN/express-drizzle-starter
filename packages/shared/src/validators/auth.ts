@@ -61,3 +61,19 @@ export interface ProfileUpdateResponse {
     /** Only set when the password changed: the caller's old tokens were just revoked. */
     tokens: AuthTokens | null;
 }
+
+/**
+ * Cookie names the WEB surface (`/api/v1/auth/web/*`) sets. A frontend never reads them — they
+ * are httpOnly — but the API, the WebSocket handshake and any test do.
+ */
+export const ACCESS_TOKEN_COOKIE = "access_token";
+export const REFRESH_TOKEN_COOKIE = "refresh_token";
+
+/**
+ * What the web surface returns. The tokens are NOT in it: they went out as httpOnly cookies
+ * the browser sends on its own, so an XSS bug cannot walk off with the session. The body only
+ * carries who you now are.
+ */
+export interface WebSessionResponse {
+    user: AuthUser;
+}
