@@ -3,4 +3,5 @@
  * directly. Keeping the surface in one file is what makes a module replaceable.
  */
 export { authRouter } from "./auth.routes.js";
+export { webAuthRouter } from "./web.routes.js";
 export { getProfile } from "./auth.service.js";

@@ -2,7 +2,9 @@ import jwt from "jsonwebtoken";
 import type { UserRole } from "shared";
 import { env } from "../config/env.js";
 
-const ACCESS_TOKEN_TTL_S = 15 * 60;
+// Exported in ms because the web surface derives its cookie Max-Age from the same numbers —
+// set them apart and you eventually get a cookie that outlives its token, or the reverse.
+export const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface AccessPayload {
@@ -29,7 +31,7 @@ function verify<T extends object>(token: string, type: "access" | "refresh", sec
 }
 
 export function signAccessToken(payload: AccessPayload): string {
-    return sign(payload, "access", env.JWT_ACCESS_SECRET, ACCESS_TOKEN_TTL_S);
+    return sign(payload, "access", env.JWT_ACCESS_SECRET, ACCESS_TOKEN_TTL_MS / 1000);
 }
 
 export function signRefreshToken(payload: RefreshPayload): string {

@@ -19,7 +19,7 @@ const envSchema = z
         DATABASE_URL: z.string().min(1),
         JWT_ACCESS_SECRET: z.string().min(1),
         JWT_REFRESH_SECRET: z.string().min(1),
-        /** Comma-separated allowed browser origins. Empty reflects any origin — dev only. */
+        /** Comma-separated allowed browser origins. Empty means same-origin only. */
         CORS_ORIGIN: z.string().default(""),
         /** Root of uploaded files. In production this points at a persistent volume. */
         UPLOAD_DIR: z.string().min(1).default(path.resolve(here, "../../../../../uploads")),

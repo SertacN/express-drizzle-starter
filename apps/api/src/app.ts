@@ -16,7 +16,10 @@ export function createApp() {
     app.set("trust proxy", 1);
 
     app.use(helmet());
-    app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : true }));
+    // `credentials` is what lets the browser send the auth cookies of the web surface. A
+    // wildcard origin is rejected by every browser once credentials are on, so an empty list
+    // means same-origin only (the dev proxy, or Traefik in production) rather than "allow all".
+    app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : false, credentials: true }));
 
     // Uploaded files, mounted BEFORE the rate limiter: one page can request dozens of images
     // and those must not eat the API budget. The filename changes on every upload (content is

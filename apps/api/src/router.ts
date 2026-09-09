@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { healthRouter } from "./core/http/health.routes.js";
 import { requireAuth } from "./core/http/middleware/auth.js";
-import { authRouter } from "./modules/auth/index.js";
+import { authRouter, webAuthRouter } from "./modules/auth/index.js";
 import { exampleRouter, publicExampleRouter } from "./modules/example/index.js";
 import { uploadRouter } from "./modules/uploads/index.js";
 
@@ -18,6 +18,9 @@ apiRouter.use(healthRouter);
 
 // ---- anonymous ---------------------------------------------------------------------
 // No token. Every route below must carry its own rate limit and return trimmed payloads.
+// The more specific mount goes first: /auth/web/* is the cookie surface for browsers,
+// /auth/* is the Bearer one every other client uses.
+apiRouter.use("/auth/web", webAuthRouter);
 apiRouter.use("/auth", authRouter); // login/register are public by nature; /me guards itself
 apiRouter.use("/public/examples", publicExampleRouter);
 

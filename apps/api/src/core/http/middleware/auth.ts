@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import type { UserRole } from "shared";
+import { ACCESS_TOKEN_COOKIE, type UserRole } from "shared";
 import { verifyAccessToken } from "../../utils/jwt.js";
+import { parseCookies } from "../cookies.js";
 
 export interface AuthContext {
     userId: string;
@@ -15,15 +16,27 @@ declare global {
     }
 }
 
+/**
+ * Two transports, one gate. The `Authorization: Bearer` header is how the API is used by
+ * default (and the only thing a mobile app can send); the access cookie is what a browser on
+ * the `/auth/web/*` surface has. Whichever arrives, the identity comes from the SAME signed
+ * token — so every guarded route below serves both audiences without knowing which it is.
+ */
+function readAccessToken(req: Request): string | undefined {
+    const header = req.headers.authorization;
+    if (header?.startsWith("Bearer ")) return header.slice("Bearer ".length);
+    return parseCookies(req.headers.cookie)[ACCESS_TOKEN_COOKIE];
+}
+
 /** Rejects anything without a valid access token; downstream handlers can trust `req.auth`. */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-    const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) {
+    const token = readAccessToken(req);
+    if (!token) {
         res.status(401).json({ error: "unauthorized" });
         return;
     }
     try {
-        const payload = verifyAccessToken(header.slice("Bearer ".length));
+        const payload = verifyAccessToken(token);
         req.auth = { userId: payload.sub, role: payload.role };
         next();
     } catch {

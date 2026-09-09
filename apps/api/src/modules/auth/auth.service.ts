@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lt } from "drizzle-orm";
-import type { AuthUser, ProfileUpdateInput, ProfileUpdateResponse } from "shared";
+import type { AuthUser, LoginResponse, ProfileUpdateInput, ProfileUpdateResponse } from "shared";
 import { db } from "../../core/db/client.js";
 import { refreshTokens, users } from "../../core/db/schema/index.js";
 import { HttpError } from "../../core/http/middleware/errorHandler.js";
@@ -34,6 +34,15 @@ async function issueTokens(user: UserRow, familyId: string) {
     };
 }
 
+/**
+ * Tokens plus who they belong to. Every entry point returns this same shape, so the Bearer
+ * surface can hand it straight to the client and the web surface can put the tokens into
+ * cookies and the user into the body.
+ */
+async function issueSession(user: UserRow, familyId: string): Promise<LoginResponse> {
+    return { ...(await issueTokens(user, familyId)), user: toAuthUser(user) };
+}
+
 async function revokeFamily(familyId: string) {
     await db
         .update(refreshTokens)
@@ -61,7 +70,7 @@ export async function register(input: { email: string; password: string; name: s
         .values({ email, name: input.name, passwordHash: await hashPassword(input.password) })
         .returning();
 
-    return { ...(await issueTokens(user!, randomUUID())), user: toAuthUser(user!) };
+    return issueSession(user!, randomUUID());
 }
 
 export async function login(email: string, password: string) {
@@ -82,7 +91,7 @@ export async function login(email: string, password: string) {
         .delete(refreshTokens)
         .where(and(eq(refreshTokens.userId, user.id), lt(refreshTokens.expiresAt, new Date())));
 
-    return { ...(await issueTokens(user, randomUUID())), user: toAuthUser(user) };
+    return issueSession(user, randomUUID());
 }
 
 export async function getProfile(userId: string) {
@@ -94,8 +103,11 @@ export async function getProfile(userId: string) {
 /**
  * Rotation + reuse detection. The old token is burned and a new pair is issued; a token that
  * comes back after it was already spent is treated as stolen and takes its whole family down.
+ *
+ * Answers with the user as well as the pair: the web surface puts the tokens into cookies and
+ * has nothing left to tell the browser who it is signed in as.
  */
-export async function refreshSession(refreshToken: string) {
+export async function refreshSession(refreshToken: string): Promise<LoginResponse> {
     let payload;
     try {
         payload = verifyRefreshToken(refreshToken);
@@ -134,7 +146,7 @@ export async function refreshSession(refreshToken: string) {
         // a second tab that missed the rotation), not theft. The family survives and a new
         // pair from the same family is issued. Replays after the window still count as theft.
         if (isWithinReuseGrace(existing, now)) {
-            return issueTokens(user, existing.familyId);
+            return issueSession(user, existing.familyId);
         }
 
         await revokeFamily(existing.familyId);
@@ -143,7 +155,7 @@ export async function refreshSession(refreshToken: string) {
 
     if (claimed.expiresAt < now) throw new HttpError(401, "invalid_refresh_token");
 
-    return issueTokens(user, claimed.familyId);
+    return issueSession(user, claimed.familyId);
 }
 
 /** Idempotent: an invalid token is not an error, there is simply nothing to revoke. */
