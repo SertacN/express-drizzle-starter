@@ -14,12 +14,12 @@ ready to run; `apps/web` is empty (the framework is chosen when a project starts
 
 ## Stack
 
-| Layer   | Choice                                                                                    |
-| ------- | ----------------------------------------------------------------------------------------- |
-| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)              |
-| DB      | PostgreSQL 16 + Drizzle ORM                                                               |
-| Auth    | JWT Bearer (access 15 min + refresh 30 days, tracked in the DB), roles: `admin` \| `user` |
-| Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance         |
+| Layer   | Choice                                                                                                                                                           |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)                                                                                     |
+| DB      | PostgreSQL 16 + Drizzle ORM                                                                                                                                      |
+| Auth    | JWT, access 15 min + refresh 30 days tracked in the DB. Default: **Bearer**; browsers may use **httpOnly cookies** under `/auth/web/*`. Roles: `admin` \| `user` |
+| Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance                                                                                |
 
 ## How the API is organised (module-first)
 
@@ -37,8 +37,9 @@ src/
 
 Inside a module: `<name>.service.ts` (the only layer that talks to the DB) +
 `<name>.controller.ts` + `<name>.routes.ts` + `index.ts`. When a module serves more than one
-audience, the HTTP surface is split by file (`public.routes.ts`) while the service and the
-schema stay single copies.
+audience, the HTTP surface is split by file (`public.routes.ts`, `web.routes.ts`) while the
+service and the schema stay single copies — `auth/` serves one session over two transports and
+`auth.service.ts` does not know which one it is answering.
 
 **Two rules (never break them):**
 
@@ -76,6 +77,15 @@ contract is shared with the frontend, so it does not move into a module.
   row returns 404, not 403 (do not leak that it exists).
 - The refresh token pattern stays intact: rotation + reuse detection + family revoke. No cache
   and no auto-retry on the refresh endpoint.
+- Bearer is the default transport, and tokens in a response body belong to it alone. The web
+  surface (`/api/v1/auth/web/*`) is the opposite rule: its tokens go out ONLY as cookies —
+  `httpOnly` + `sameSite: 'lax'` + `secure` in production, the refresh cookie scoped to
+  `/api/v1/auth/web` — and never appear in a body. Do not mix the two on one route.
+- `requireAuth` accepts the Bearer header first and the access cookie second, so a guarded
+  route is written once and serves both audiences. Never add a second, transport-specific guard.
+- CORS runs with `credentials: true`, which makes an empty `CORS_ORIGIN` mean same-origin only.
+  Never widen it to a reflected/wildcard origin — with cookies that hands the session to any
+  site the user visits.
 - Money and other critical arithmetic happens only on the server, inside a transaction; a value
   computed by the client is never trusted.
 - `core/storage/storage.service.ts` is the only file that touches the disk.

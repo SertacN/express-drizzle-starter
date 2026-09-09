@@ -14,12 +14,12 @@ zod sözleşmesini ve API istemcisini tutar.
 
 ## Stack
 
-| Katman  | Seçim                                                                             |
-| ------- | --------------------------------------------------------------------------------- |
-| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (`.js` uzantılı import)    |
-| DB      | PostgreSQL 16 + Drizzle ORM                                                       |
-| Auth    | JWT Bearer (access 15 dk + refresh 30 gün, DB'de izlenir), rol: `admin` \| `user` |
-| Deploy  | Docker Compose; Traefik compose'da DEĞİL, VPS'teki paylaşılan instance            |
+| Katman  | Seçim                                                                                                                                                                 |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (`.js` uzantılı import)                                                                                        |
+| DB      | PostgreSQL 16 + Drizzle ORM                                                                                                                                           |
+| Auth    | JWT, access 15 dk + refresh 30 gün, DB'de izlenir. Varsayılan: **Bearer**; tarayıcılar `/auth/web/*` altında **httpOnly cookie** kullanabilir. Rol: `admin` \| `user` |
+| Deploy  | Docker Compose; Traefik compose'da DEĞİL, VPS'teki paylaşılan instance                                                                                                |
 
 ## API'nin iç düzeni (modül-birinci)
 
@@ -37,7 +37,9 @@ src/
 
 Modül içi iskelet: `<ad>.service.ts` (DB'yle konuşan tek katman) + `<ad>.controller.ts` +
 `<ad>.routes.ts` + `index.ts`. Bir modül birden fazla kitleye hizmet ediyorsa HTTP yüzeyi dosya
-adıyla ayrılır (`public.routes.ts`); servis ve şema tek kopya kalır.
+adıyla ayrılır (`public.routes.ts`, `web.routes.ts`); servis ve şema tek kopya kalır — `auth/`
+tek bir oturumu iki taşıma üzerinden sunar ve `auth.service.ts` hangisine cevap verdiğini
+bilmez.
 
 **İki kural (asla ihlal etme):**
 
@@ -73,6 +75,15 @@ paylaşılır, modüle taşınmaz.
   satırı için 403 değil 404 döner (varlığını sızdırma).
 - Refresh token deseni bozulmadan korunur: rotation + reuse detection + family revoke.
   Refresh ucuna cache/retry konmaz.
+- Varsayılan taşıma Bearer'dır ve response body'sindeki token'lar yalnız ona aittir. Web yüzeyi
+  (`/api/v1/auth/web/*`) tam tersi kuraldadır: token'ları SADECE cookie olarak çıkar —
+  `httpOnly` + `sameSite: 'lax'`, production'da `secure`, refresh cookie'si `/api/v1/auth/web`
+  path'ine kısıtlı — ve body'de asla görünmez. İkisini tek route'ta karıştırma.
+- `requireAuth` önce Bearer header'ını, sonra access cookie'sini kabul eder; korumalı route bir
+  kez yazılır ve iki kitleye birden hizmet eder. Taşımaya özel ikinci bir guard ekleme.
+- CORS `credentials: true` ile çalışıyor, bu yüzden boş `CORS_ORIGIN` "sadece aynı origin"
+  demektir. Yansıtılan/wildcard origin'e genişletme — cookie varken bu, oturumu kullanıcının
+  girdiği her siteye teslim eder.
 - Tutar/kritik hesap yalnız sunucuda, transaction içinde; istemciden gelen hesaplanmış değere
   güvenilmez.
 - Diske dokunan tek dosya `core/storage/storage.service.ts`.

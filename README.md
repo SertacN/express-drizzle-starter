@@ -5,7 +5,8 @@
 An Express + TypeScript + Drizzle (PostgreSQL) API skeleton. A pnpm monorepo: `apps/api` is
 ready to run, `apps/web` is empty — you pick the frontend framework when the project starts.
 
-What comes with it: JWT auth (access + refresh, with rotation and reuse detection), role-based
+What comes with it: JWT auth (access + refresh, with rotation and reuse detection) over two
+transports — Bearer tokens by default, httpOnly cookies for browsers that want them — role-based
 guards, image uploads (re-encoded to WebP by sharp), a WebSocket server, error and slow-request
 logging into the database, a Postgres-only compose file for development and a Traefik-labelled
 one for production.
@@ -34,6 +35,16 @@ curl localhost:3000/api/v1/health
 curl -X POST localhost:3000/api/v1/auth/login \
   -H 'content-type: application/json' \
   -d '{"email":"admin@example.com","password":"secret123"}'
+curl -H "Authorization: Bearer <accessToken>" localhost:3000/api/v1/auth/me
+```
+
+The same login the way a browser does it — no tokens in the body, two httpOnly cookies instead:
+
+```bash
+curl -c cookies.txt -X POST localhost:3000/api/v1/auth/web/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"secret123"}'
+curl -b cookies.txt localhost:3000/api/v1/auth/me
 ```
 
 ## Commands
@@ -124,8 +135,29 @@ Do not break this pattern: caching or auto-retrying the refresh endpoint sets of
 detection for the wrong reason.
 
 Endpoints: `POST /api/v1/auth/{register,login,refresh,logout}`, `GET|PATCH /api/v1/auth/me`.
-If you do not want open sign-ups, delete the `register` line from `auth.routes.ts` and add users
-with `user:create`.
+If you do not want open sign-ups, delete the `register` line from `auth.routes.ts` (and from
+`web.routes.ts`) and add users with `user:create`.
+
+### Two transports, one session
+
+Bearer is the default: the pair comes back in the body and the caller stores it. That is what a
+mobile app needs — it has no cookie jar — and what `curl` and any server-to-server client want.
+**The refresh token belongs in the Keychain / Keystore on a device**, never in plain storage.
+
+A browser can use `/api/v1/auth/web/*` instead: `{register,login,refresh,logout}` plus
+`PATCH /me`. There the pair goes out as httpOnly cookies the page cannot read, so an XSS bug
+cannot walk off with the session, and **no token is ever in the response body** — it carries only
+the user. `refresh` and `logout` need no argument; the server reads the refresh cookie, which is
+scoped to `/api/v1/auth/web` so nothing else ever receives it.
+
+Behind the transport nothing differs: one `auth.service.ts`, one `refresh_tokens` table, the same
+rotation and reuse detection. `requireAuth` reads the Bearer header first and the access cookie
+second, so every guarded route (`GET /auth/me`, `/examples`, `/uploads`) serves both audiences
+and has no web twin. The WebSocket handshake works the same way: a browser's access cookie rides
+along on the upgrade request, while a Bearer client sends `{type:"join", token}` as before.
+
+Because cookies mean credentialed requests, CORS runs with `credentials: true` — so an empty
+`CORS_ORIGIN` means SAME-ORIGIN ONLY. Use the dev proxy below, or list the frontend's origin.
 
 ## Uploads
 
@@ -170,13 +202,35 @@ server: {
 }
 ```
 
-Then use the client from `shared`:
+Then use the client from `shared`. For a browser on the cookie surface:
+
+```ts
+import { createWebApiClient } from "shared";
+
+const api = createWebApiClient({ baseUrl: "", onSessionExpired: () => goto("/login") });
+await api.auth.login({ email, password }); // cookies are set by the server
+const { items } = await api.examples.list({ page: 1 });
+```
+
+For a mobile app (or any Bearer caller), `createApiClient` is the same client over tokens. Give
+it a store and it keeps the session for you — the access token on every call, one single-flight
+rotation on a 401, the new pair written back:
 
 ```ts
 import { createApiClient } from "shared";
-const api = createApiClient({ baseUrl: "", getAccessToken: () => session.accessToken });
-const { items } = await api.examples.list({ page: 1 });
+
+const api = createApiClient({
+    baseUrl: "https://api.example.com",
+    tokens: { read: readFromSecureStore, write: writeToSecureStore },
+    onSessionExpired: () => navigation.reset({ routes: [{ name: "SignIn" }] }),
+});
+
+await api.auth.login({ email, password }); // the pair is stored for you
 ```
+
+Without a store it stays the plain wrapper it always was (`getAccessToken`), and rotation is
+yours to write. Every non-auth service is the exact same code in both clients — a resource
+service never knew how the session travelled.
 
 If you need more than one frontend (say `apps/admin`), copy the same pattern: a new folder, a
 different port, a new service plus a Traefik router in `docker-compose.yml`.

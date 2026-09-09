@@ -5,9 +5,10 @@
 Express + TypeScript + Drizzle (PostgreSQL) API iskeleti. pnpm monorepo: `apps/api` çalışır
 durumda gelir, `apps/web` boştur — frontend framework'ünü proje başında sen seçersin.
 
-Hazır gelenler: JWT auth (access + refresh, rotation ve çalınma tespitiyle), rol tabanlı yetki,
-görsel yükleme (sharp ile WebP'ye dönüştürme), WebSocket, DB'ye yazan hata/yavaş istek logu,
-dev için Docker Postgres, prod için Traefik'e bağlanan compose.
+Hazır gelenler: iki taşıma üzerinden JWT auth (access + refresh, rotation ve çalınma
+tespitiyle) — varsayılan Bearer token, isteyen tarayıcı için httpOnly cookie —, rol tabanlı
+yetki, görsel yükleme (sharp ile WebP'ye dönüştürme), WebSocket, DB'ye yazan hata/yavaş istek
+logu, dev için Docker Postgres, prod için Traefik'e bağlanan compose.
 
 ## Hızlı başlangıç
 
@@ -33,6 +34,16 @@ curl localhost:3000/api/v1/health
 curl -X POST localhost:3000/api/v1/auth/login \
   -H 'content-type: application/json' \
   -d '{"email":"admin@example.com","password":"sifre123"}'
+curl -H "Authorization: Bearer <accessToken>" localhost:3000/api/v1/auth/me
+```
+
+Aynı girişin tarayıcı hâli — body'de token yok, iki httpOnly cookie var:
+
+```bash
+curl -c cookies.txt -X POST localhost:3000/api/v1/auth/web/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"sifre123"}'
+curl -b cookies.txt localhost:3000/api/v1/auth/me
 ```
 
 ## Komutlar
@@ -122,8 +133,30 @@ refresh 30 gün ve **DB'de izlenir**:
 Bu deseni bozma: refresh ucuna cache veya otomatik retry koymak reuse tespitini yanlış tetikler.
 
 Uçlar: `POST /api/v1/auth/{register,login,refresh,logout}`, `GET|PATCH /api/v1/auth/me`.
-Kayıt açık olsun istemiyorsan `auth.routes.ts`'ten `register` satırını sil — kullanıcıları
-`user:create` ile ekle.
+Kayıt açık olsun istemiyorsan `auth.routes.ts`'ten (ve `web.routes.ts`'ten) `register` satırını
+sil — kullanıcıları `user:create` ile ekle.
+
+### İki taşıma, tek oturum
+
+Varsayılan Bearer: çift body'de döner ve saklamak çağıranın işi. Mobil uygulamanın ihtiyacı bu —
+cookie jar'ı yok —, `curl` ve sunucudan sunucuya çağıran her istemcinin de. **Cihazda refresh
+token'ın yeri Keychain / Keystore'dur**, düz storage değil.
+
+Tarayıcı bunun yerine `/api/v1/auth/web/*` kullanabilir: `{register,login,refresh,logout}` artı
+`PATCH /me`. Orada çift, sayfanın okuyamadığı httpOnly cookie olarak çıkar — yani bir XSS açığı
+oturumu alıp götüremez — ve **hiçbir token response body'sinde yer almaz**, body sadece
+kullanıcıyı taşır. `refresh` ve `logout` parametre istemez; sunucu refresh cookie'sini okur, o
+cookie de `/api/v1/auth/web` path'ine kısıtlı olduğu için başka hiçbir uca gitmez.
+
+Taşımanın arkasında hiçbir şey değişmiyor: tek `auth.service.ts`, tek `refresh_tokens` tablosu,
+aynı rotation ve reuse detection. `requireAuth` önce Bearer header'ını sonra access cookie'sini
+okuduğu için korumalı her uç (`GET /auth/me`, `/examples`, `/uploads`) iki kitleye birden hizmet
+eder, web ikizi yoktur. WebSocket de aynı mantıkta: tarayıcının access cookie'si upgrade
+isteğiyle beraber gelir, Bearer istemcisi ise eskisi gibi `{type:"join", token}` gönderir.
+
+Cookie'ler isteği credential'lı yaptığı için CORS `credentials: true` ile çalışıyor — dolayısıyla
+boş `CORS_ORIGIN` artık SADECE AYNI ORIGIN demek. Aşağıdaki dev proxy'yi kullan ya da
+frontend'in origin'ini yaz.
 
 ## Yükleme
 
@@ -168,13 +201,35 @@ server: {
 }
 ```
 
-Sonra `shared`'daki istemciyi kullan:
+Sonra `shared`'daki istemciyi kullan. Cookie yüzeyindeki bir tarayıcı için:
+
+```ts
+import { createWebApiClient } from "shared";
+
+const api = createWebApiClient({ baseUrl: "", onSessionExpired: () => goto("/login") });
+await api.auth.login({ email, password }); // cookie'leri sunucu set ediyor
+const { items } = await api.examples.list({ page: 1 });
+```
+
+Mobil uygulama (ya da herhangi bir Bearer çağıranı) için `createApiClient` aynı istemcinin
+token'lı hâli. Bir store verirsen oturumu senin yerine yönetir — her çağrıda access token, 401'de
+tek seferlik (single-flight) rotation, yeni çiftin geri yazılması:
 
 ```ts
 import { createApiClient } from "shared";
-const api = createApiClient({ baseUrl: "", getAccessToken: () => session.accessToken });
-const { items } = await api.examples.list({ page: 1 });
+
+const api = createApiClient({
+    baseUrl: "https://api.example.com",
+    tokens: { read: readFromSecureStore, write: writeToSecureStore },
+    onSessionExpired: () => navigation.reset({ routes: [{ name: "SignIn" }] }),
+});
+
+await api.auth.login({ email, password }); // çifti senin yerine saklıyor
 ```
+
+Store vermezsen eskiden olduğu gibi düz bir sarmalayıcı kalır (`getAccessToken`) ve rotation'ı
+sen yazarsın. Auth dışındaki her servis iki istemcide de birebir aynı kod — bir kaynak servisi
+oturumun nasıl taşındığını zaten hiç bilmiyordu.
 
 Birden fazla frontend gerekiyorsa (ör. `apps/admin`) aynı deseni kopyala: yeni klasör, farklı
 port, `docker-compose.yml`'de yeni servis + Traefik router'ı.
