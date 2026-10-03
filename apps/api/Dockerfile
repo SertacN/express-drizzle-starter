@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 RUN corepack enable
 ENV CI=true
 WORKDIR /repo
@@ -10,20 +10,20 @@ RUN pnpm install --frozen-lockfile --filter api...
 COPY packages/shared packages/shared
 COPY apps/api apps/api
 RUN pnpm --filter shared build && pnpm --filter api build
-# Drop devDeps — only production dependencies reach the runtime image.
-RUN pnpm install --frozen-lockfile --filter api... --prod
+# `pnpm install --prod` only unlinks devDeps and leaves them in node_modules/.pnpm; `deploy`
+# writes a fresh bundle that holds nothing but the production dependency tree.
+RUN pnpm --filter api deploy --prod /deploy
 
-# pnpm installs dependencies as symlinks (apps/api/node_modules/* -> ../../node_modules/.pnpm/*),
-# so the runtime image keeps the exact same workspace layout or those links break.
-FROM node:22-alpine
-WORKDIR /app
-COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/packages/shared ./packages/shared
-COPY --from=build /repo/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
-COPY --from=build /repo/apps/api/dist ./apps/api/dist
-# SQL files are not compiled by tsc, so they are copied next to the built migrator.
-COPY apps/api/src/core/db/migrations ./apps/api/dist/core/db/migrations
+FROM node:24-alpine
+ENV NODE_ENV=production
 WORKDIR /app/apps/api
+COPY --from=build /deploy/package.json ./package.json
+COPY --from=build /deploy/node_modules ./node_modules
+COPY --from=build /deploy/dist ./dist
+# SQL files are not compiled by tsc, so they are copied next to the built migrator.
+COPY apps/api/src/core/db/migrations ./dist/core/db/migrations
+# A fresh named volume copies this directory's ownership, so `node` can write uploads.
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
+USER node
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
