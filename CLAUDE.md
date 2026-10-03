@@ -17,7 +17,7 @@ ready to run; `apps/web` is empty (the framework is chosen when a project starts
 | Layer   | Choice                                                                                                                                                           |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)                                                                                     |
-| DB      | PostgreSQL 16 + Drizzle ORM                                                                                                                                      |
+| DB      | PostgreSQL 18 + Drizzle ORM                                                                                                                                      |
 | Auth    | JWT, access 15 min + refresh 30 days tracked in the DB. Default: **Bearer**; browsers may use **httpOnly cookies** under `/auth/web/*`. Roles: `admin` \| `user` |
 | Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance                                                                                |
 

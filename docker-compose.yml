@@ -68,7 +68,7 @@ services:
 
     postgres:
         container_name: app_db
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         restart: unless-stopped
         logging: *default-logging
         environment:
@@ -83,7 +83,7 @@ services:
         # Internal network only — unreachable from Traefik and from the outside world.
         networks:
             - internal
-        volumes: [pgdata:/var/lib/postgresql/data]
+        volumes: [pgdata:/var/lib/postgresql]
 
 networks:
     traefik-net:

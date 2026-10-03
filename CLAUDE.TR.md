@@ -17,7 +17,7 @@ zod sözleşmesini ve API istemcisini tutar.
 | Katman  | Seçim                                                                                                                                                                 |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (`.js` uzantılı import)                                                                                        |
-| DB      | PostgreSQL 16 + Drizzle ORM                                                                                                                                           |
+| DB      | PostgreSQL 18 + Drizzle ORM                                                                                                                                           |
 | Auth    | JWT, access 15 dk + refresh 30 gün, DB'de izlenir. Varsayılan: **Bearer**; tarayıcılar `/auth/web/*` altında **httpOnly cookie** kullanabilir. Rol: `admin` \| `user` |
 | Deploy  | Docker Compose; Traefik compose'da DEĞİL, VPS'teki paylaşılan instance                                                                                                |
 
