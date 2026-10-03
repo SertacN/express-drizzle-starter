@@ -11,10 +11,10 @@
 		"format": "pnpm -r format"
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=24"
 	},
-	"packageManager": "pnpm@11.9.0",
+	"packageManager": "pnpm@11.28.2",
 	"devDependencies": {
-		"prettier": "^3.9.6"
+		"prettier": "^3.9.9"
 	}
 }
