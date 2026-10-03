@@ -1,10 +1,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
 import { defineConfig } from "drizzle-kit";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(here, "../../.env"), quiet: true });
+try {
+    process.loadEnvFile(path.resolve(here, "../../.env"));
+} catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+}
 
 export default defineConfig({
     dialect: "postgresql",

@@ -1,11 +1,16 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
 import { z } from "zod";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// src/core/config or dist/core/config -> repo root (same depth either way).
-dotenv.config({ path: path.resolve(here, "../../../../../.env"), quiet: true });
+// src/core/config or dist/core/config -> repo root (same depth either way). Variables already
+// in the environment win over the file. A missing file is normal: in production compose
+// injects the environment and the image carries no .env.
+try {
+    process.loadEnvFile(path.resolve(here, "../../../../../.env"));
+} catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+}
 
 /**
  * Every environment variable the API reads, in one schema. Parsing happens at import time:
