@@ -93,6 +93,11 @@ contract is shared with the frontend, so it does not move into a module.
 - Uploaded files live under `UPLOAD_DIR`; in production, backing up that volume matters as much
   as pgdata.
 
+## Local rules
+
+If `.claude/rules/` exists, read the files in it and follow them — they are kept outside the
+repo on purpose and copied in per project. Never commit them.
+
 ## Commits
 
 Conventional Commits — `<type>(<scope>): <subject>`. Lowercase, imperative, no trailing period,

@@ -13,3 +13,6 @@ build/
 # "uploads/" pattern would also swallow apps/api/src/modules/uploads/ and silently
 # leave its source files uncommitted.
 /uploads/
+
+# Local Claude Code files (rules, settings), never shared through the repo
+.claude/

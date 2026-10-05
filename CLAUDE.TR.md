@@ -90,6 +90,11 @@ paylaşılır, modüle taşınmaz.
 - Tek API instance varsayımı (WS state in-memory) — ölçek gerekirse önce Redis pub/sub.
 - Yüklenen dosyalar `UPLOAD_DIR` altında; prod'da volume yedeklemesi pgdata kadar önemli.
 
+## Yerel kurallar
+
+`.claude/rules/` varsa içindeki dosyaları oku ve uygula — bilerek repo dışında tutulur ve her
+projeye ayrıca kopyalanır. Asla commit'lenmez.
+
 ## Commit'ler
 
 Conventional Commits — `<tip>(<kapsam>): <konu>`. Küçük harf, emir kipi, İngilizce, sonda nokta
