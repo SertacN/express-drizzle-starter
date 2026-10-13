@@ -8,6 +8,22 @@ export interface WebApiClientOptions {
      * session is really over. Wire it to your "redirect to /login" logic.
      */
     onSessionExpired?: () => void;
+    /**
+     * Fetch implementation, the global one by default. On the server pass the framework's own —
+     * SvelteKit's `event.fetch` forwards the visitor's cookies and resolves relative paths.
+     */
+    fetch?: typeof fetch;
+    /**
+     * Headers sent with every request, under the per-request ones. For server rendering where
+     * no browser attaches the cookies, e.g. `{ cookie }` read in a Next Server Component.
+     */
+    headers?: HeadersInit;
+    /**
+     * Rotate the session on a 401 and replay (default true). Turn it OFF on the server: the new
+     * cookies of a server-side rotation never reach the browser, which then sends the burnt
+     * refresh token, trips reuse detection and loses the whole session family.
+     */
+    autoRefresh?: boolean;
 }
 
 export const WEB_AUTH_PATH = "/api/v1/auth/web";
@@ -30,12 +46,14 @@ export function createWebRequest(options: WebApiClientOptions): RequestFn {
     let refreshing: Promise<boolean> | null = null;
 
     async function send(path: string, init: RequestInit): Promise<Response> {
-        const headers = new Headers(init.headers);
+        const headers = new Headers(options.headers);
+        new Headers(init.headers).forEach((value, key) => headers.set(key, value));
         // Never set Content-Type for FormData — the browser has to add the multipart
         // boundary itself, and a fixed value makes the body unparseable.
         if (!(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
         // The whole scheme is httpOnly cookies; without this they are simply not sent.
-        return fetch(`${options.baseUrl}${path}`, { ...init, headers, credentials: "include" });
+        const doFetch = options.fetch ?? fetch;
+        return doFetch(`${options.baseUrl}${path}`, { ...init, headers, credentials: "include" });
     }
 
     async function refresh(): Promise<boolean> {
@@ -53,7 +71,7 @@ export function createWebRequest(options: WebApiClientOptions): RequestFn {
 
         // An expired access cookie is routine, not a failure: rotate once and replay. Retrying
         // more than once would turn a revoked family into an infinite loop.
-        if (res.status === 401 && !NO_RETRY_PATHS.includes(path)) {
+        if (res.status === 401 && options.autoRefresh !== false && !NO_RETRY_PATHS.includes(path)) {
             if (await refresh()) res = await send(path, init);
             else options.onSessionExpired?.();
         }
