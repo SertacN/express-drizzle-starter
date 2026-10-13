@@ -1,0 +1,46 @@
+name: Deploy to Production
+
+on:
+    push:
+        branches: [main]
+
+# One deploy at a time: two runs on the same VPS would `git pull` and `docker compose up --build`
+# over each other. A push during a deploy waits for it instead of cancelling it halfway.
+concurrency:
+    group: deploy-production
+    cancel-in-progress: false
+
+jobs:
+    deploy:
+        name: Deploy
+        # Skipped until the repository variable DEPLOY_PATH is set (Settings → Secrets and
+        # variables → Actions → Variables), so the starter itself and a fresh copy of it do not
+        # fail on every push before a server exists.
+        if: ${{ vars.DEPLOY_PATH != '' }}
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Deploy to VPS
+              uses: appleboy/ssh-action@v1.2.0
+              env:
+                  DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+              with:
+                  host: ${{ secrets.VPS_HOST }}
+                  username: root
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  port: 22
+                  envs: DEPLOY_PATH
+                  script: |
+                      set -e
+                      cd "$DEPLOY_PATH"
+                      git pull
+                      docker compose up -d --build --remove-orphans
+                      # Migrations run at deploy, not at build: the image stays buildable without a
+                      # database and the migrations run once, in one place.
+                      docker compose exec -T api node dist/core/db/migrate.js
+                      # `image prune` only removes untagged images; the bulk of what deploys leave behind
+                      # is BuildKit's build cache, which only `builder prune` touches. Cache unused for a
+                      # week goes, recent layers stay so the next build is still fast. The cache belongs
+                      # to the Docker daemon, so this also trims the other projects on the VPS.
+                      docker image prune -f
+                      docker builder prune -f --filter until=168h

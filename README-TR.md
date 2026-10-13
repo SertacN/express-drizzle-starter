@@ -249,6 +249,27 @@ docker compose exec api node dist/core/db/migrate.js
 Postgres yalnız `internal` ağında; dışarıdan ve Traefik'ten erişilemez. Yüklenen dosyalar
 `uploads` volume'ünde kalıcıdır.
 
+### Push'ta deploy
+
+`.github/workflows/deploy.yml`, `main`'e yapılan her push'u deploy eder: VPS'e SSH ile bağlanır,
+çeker, build alır, migration'ları çalıştırır, eski imajları ve build cache'i temizler. Deploy'lar
+üst üste binmez, sıraya girer. Siz ayarlayana kadar kapalı kalır:
+
+| Nerede (repo → Settings → Secrets and variables → Actions) | Ad            | Değer                                       |
+| ---------------------------------------------------------- | ------------- | ------------------------------------------- |
+| Secret                                                     | `VPS_HOST`    | sunucunun IP'si veya host adı               |
+| Secret                                                     | `VPS_SSH_KEY` | public yarısı sunucuda olan bir private key |
+| Variable                                                   | `DEPLOY_PATH` | reponun klonlandığı yer, ör. `/opt/myapp`   |
+
+`DEPLOY_PATH` yoksa iş atlanır; yeni bir kopyaya push etmek sunucu olmadığı için hata vermez.
+
+Dockerfile'lar sunucunun diskini düşünerek sıralanmıştır: production bağımlılıkları yalnız
+lockfile'dan, kendi aşamasında kurulur; kaynak kod ondan sonra kopyalanır. Böylece sıradan bir
+deploy yalnız derlenmiş kodu yeniden üretir. Production `node_modules`'ü kaynak kopyalandıktan
+SONRA üretmek (`pnpm deploy` ya da yerinde `pnpm install --prod`) her deploy'da yeniden çalışır
+ve build cache'e her seferinde yeni bir node_modules katmanı bırakır — yeni bir app eklerken bu
+sırayı koruyun.
+
 ## Commit'ler
 
 Conventional Commits — `<tip>(<kapsam>): <konu>`. Küçük harf, emir kipi ve İngilizce ("add",

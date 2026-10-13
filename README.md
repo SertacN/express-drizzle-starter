@@ -250,6 +250,27 @@ docker compose exec api node dist/core/db/migrate.js
 Postgres sits on the `internal` network only; neither the outside world nor Traefik can reach it.
 Uploaded files persist in the `uploads` volume.
 
+### Deploying on push
+
+`.github/workflows/deploy.yml` deploys every push to `main`: it connects to the VPS over SSH,
+pulls, builds, runs the migrations and prunes old images and build cache. Deploys queue up
+instead of overlapping. It stays switched off until you configure it:
+
+| Where (repo → Settings → Secrets and variables → Actions) | Name          | Value                                            |
+| --------------------------------------------------------- | ------------- | ------------------------------------------------ |
+| Secret                                                    | `VPS_HOST`    | the server's IP or hostname                      |
+| Secret                                                    | `VPS_SSH_KEY` | a private key whose public half is on the server |
+| Variable                                                  | `DEPLOY_PATH` | where the repo is cloned, e.g. `/opt/myapp`      |
+
+Without `DEPLOY_PATH` the job is skipped, so pushing to a fresh copy never fails for want of a
+server.
+
+The Dockerfiles are ordered for the server's disk: production dependencies are installed in
+their own stage from the lockfile alone, the source is copied after. An ordinary deploy then
+rebuilds only the compiled code. Producing the production `node_modules` after the source copy
+(`pnpm deploy`, or `pnpm install --prod` in place) reruns on every deploy and leaves a new
+node_modules layer in the build cache each time — keep that order when adding an app.
+
 ## Commits
 
 Conventional Commits — `<type>(<scope>): <subject>`. Lowercase, imperative ("add", not "added"),
