@@ -22,12 +22,15 @@ services:
             NODE_ENV: production
             # Overrides the localhost URL in .env with the compose network host.
             DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+            REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
             CORS_ORIGIN: https://${DOMAIN}
             # Uploaded files go to a persistent volume — rebuilding the image must not wipe them.
             UPLOAD_DIR: /app/uploads
         volumes: [uploads:/app/uploads]
         depends_on:
             postgres:
+                condition: service_healthy
+            redis:
                 condition: service_healthy
         networks:
             - traefik-net
@@ -85,6 +88,34 @@ services:
             - internal
         volumes: [pgdata:/var/lib/postgresql]
 
+    # Holds the job queues, so it is persisted (AOF) like a database rather than run as a
+    # throwaway cache, and never evicts: an evicted key is a silently lost job.
+    redis:
+        container_name: app_redis
+        image: redis:8-alpine
+        restart: unless-stopped
+        logging: *default-logging
+        command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --maxmemory-policy
+            - noeviction
+            - --requirepass
+            - ${REDIS_PASSWORD}
+        environment:
+            # Lets the healthcheck authenticate without putting the password on its command line.
+            REDISCLI_AUTH: ${REDIS_PASSWORD}
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+        # Internal network only, same as Postgres.
+        networks:
+            - internal
+        volumes: [redisdata:/data]
+
 networks:
     traefik-net:
         external: true
@@ -94,4 +125,5 @@ networks:
 
 volumes:
     pgdata:
+    redisdata:
     uploads:

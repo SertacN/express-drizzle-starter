@@ -5,4 +5,5 @@ packages:
 # pnpm 10+ blocks postinstall scripts by default; these are the ones we trust.
 allowBuilds:
   esbuild: true
+  msgpackr-extract: true
   sharp: true

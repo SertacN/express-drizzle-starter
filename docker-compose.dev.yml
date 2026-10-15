@@ -1,4 +1,4 @@
-# Development: Postgres only. Apps run on the host with `pnpm dev`.
+# Development: Postgres and Redis only. Apps run on the host with `pnpm dev`.
 services:
     postgres:
         image: postgres:18-alpine
@@ -12,5 +12,16 @@ services:
         volumes:
             - pgdata_dev:/var/lib/postgresql
 
+    # noeviction: BullMQ keeps its jobs in Redis, and an evicted key is a silently lost job.
+    redis:
+        image: redis:8-alpine
+        restart: unless-stopped
+        command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+        ports:
+            - "${REDIS_PORT:-6379}:6379"
+        volumes:
+            - redisdata_dev:/data
+
 volumes:
     pgdata_dev:
+    redisdata_dev:
