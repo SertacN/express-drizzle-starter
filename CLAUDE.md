@@ -19,6 +19,7 @@ ready to run; `apps/web` is empty (the framework is chosen when a project starts
 | Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (imports carry `.js`)                                                                                     |
 | DB      | PostgreSQL 18 + Drizzle ORM                                                                                                                                      |
 | Auth    | JWT, access 15 min + refresh 30 days tracked in the DB. Default: **Bearer**; browsers may use **httpOnly cookies** under `/auth/web/*`. Roles: `admin` \| `user` |
+| Queue   | Redis + BullMQ (`core/queue/`), workers run in the API process                                                                                                   |
 | Deploy  | Docker Compose; Traefik is NOT in the compose file, it is the shared VPS instance                                                                                |
 
 ## How the API is organised (module-first)
@@ -27,11 +28,11 @@ ready to run; `apps/web` is empty (the framework is chosen when a project starts
 
 ```
 src/
-├─ index.ts   bootstrap (http + ws + jobs)
+├─ index.ts   bootstrap (http + ws + jobs + queue workers) and graceful shutdown
 ├─ app.ts     express setup
 ├─ router.ts  EVERY mount, grouped by audience (anonymous / authenticated / admin)
 ├─ core/      NOTHING module-specific: config, db, http/middleware, observability
-│             (log WRITING), realtime, storage, utils
+│             (log WRITING), queue, realtime, redis, storage, utils
 └─ modules/   auth/ example/ uploads/
 ```
 
@@ -69,6 +70,24 @@ contract is shared with the frontend, so it does not move into a module.
   a user-facing on/off switch (a disabled account, a row its owner paused). A table that needs
   both carries both columns; one flag can never mean both.
 
+## Queues
+
+- `core/queue/queue.ts` holds the BullMQ connection, default job options and the
+  `createQueue` / `createWorker` helpers ONLY. A queue belongs to the module whose work it
+  carries: `<name>.queue.ts` (queue name, job names, typed payloads, the queue) and
+  `<name>.worker.ts` (a `start<Name>Worker()` that index.ts calls). No queue is declared in core.
+- Always create queues and workers through those helpers — they attach the error logging and
+  register them for graceful shutdown. A bare `new Queue()` / `new Worker()` is never closed.
+- A job payload carries ids (and the owning `userId`), never a row; the worker re-reads
+  through the service, with ownership in the query like everywhere else.
+- Workers are idempotent (jobs retry) and do not query the DB themselves — the service is
+  still the only layer that does. Unknown job names throw, they are never silently completed.
+- Enqueue after the write is committed, never before it.
+- Redis holds jobs, so it runs with `noeviction` + AOF. Other Redis use goes through the
+  shared `redis` client from `core/redis/client.ts`, not a new connection.
+- Recurring work on a timer (`log-prune.job.ts`) is a different, older pattern; it stays as it
+  is unless it is deliberately moved to a BullMQ job scheduler.
+
 ## Non-negotiables
 
 - Every public (unauthenticated) endpoint must be rate-limited and strictly validated, and its
@@ -89,7 +108,8 @@ contract is shared with the frontend, so it does not move into a module.
 - Money and other critical arithmetic happens only on the server, inside a transaction; a value
   computed by the client is never trusted.
 - `core/storage/storage.service.ts` is the only file that touches the disk.
-- A single API instance is assumed (WS state is in memory) — scaling out means Redis pub/sub first.
+- A single API instance is assumed (WS state is in memory) — scaling out means Redis pub/sub
+  behind `broadcastToUser()` first. Redis is already there; the pub/sub is not.
 - Uploaded files live under `UPLOAD_DIR`; in production, backing up that volume matters as much
   as pgdata.
 

@@ -7,13 +7,18 @@ import { closeQueues } from "./core/queue/queue.js";
 import { initWebSocketServer } from "./core/realtime/ws.js";
 import { redis } from "./core/redis/client.js";
 import { logger } from "./core/utils/logger.js";
+import { startExampleWorker } from "./modules/example/index.js";
 
-// Bootstrap: the HTTP server, the WebSocket server sharing its port, and the scheduled jobs.
+// Bootstrap: the HTTP server, the WebSocket server sharing its port, the scheduled jobs and
+// the queue workers.
 const app = createApp();
 const server = createServer(app);
 
 initWebSocketServer(server);
 startLogPruneJob();
+
+// Queue workers — one line per module that processes a queue.
+startExampleWorker();
 
 server.listen(env.PORT, () => {
     logger.info("boot", `api listening on :${env.PORT}`);

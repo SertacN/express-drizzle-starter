@@ -19,6 +19,7 @@ zod sözleşmesini ve API istemcisini tutar.
 | Backend | Express 5 + `ws` + REST (`/api/v1/*`), TypeScript, ESM (`.js` uzantılı import)                                                                                        |
 | DB      | PostgreSQL 18 + Drizzle ORM                                                                                                                                           |
 | Auth    | JWT, access 15 dk + refresh 30 gün, DB'de izlenir. Varsayılan: **Bearer**; tarayıcılar `/auth/web/*` altında **httpOnly cookie** kullanabilir. Rol: `admin` \| `user` |
+| Kuyruk  | Redis + BullMQ (`core/queue/`), worker'lar API process'inde çalışır                                                                                                   |
 | Deploy  | Docker Compose; Traefik compose'da DEĞİL, VPS'teki paylaşılan instance                                                                                                |
 
 ## API'nin iç düzeni (modül-birinci)
@@ -27,11 +28,11 @@ zod sözleşmesini ve API istemcisini tutar.
 
 ```
 src/
-├─ index.ts   bootstrap (http + ws + job'lar)
+├─ index.ts   bootstrap (http + ws + job'lar + kuyruk worker'ları) ve düzgün kapanış
 ├─ app.ts     express kurulumu
 ├─ router.ts  TÜM mount'lar, kitleye göre gruplu (anonim / authenticated / admin)
 ├─ core/      modüle özel HİÇBİR şey yok: config, db, http/middleware, observability
-│             (log YAZMA), realtime, storage, utils
+│             (log YAZMA), queue, realtime, redis, storage, utils
 └─ modules/   auth/ example/ uploads/
 ```
 
@@ -67,6 +68,24 @@ paylaşılır, modüle taşınmaz.
   görünen açık/kapalı anahtarı (kapatılmış hesap, sahibinin duraklattığı bir satır). İkisine
   birden ihtiyaç duyan tablo iki kolonu da taşır; tek bayrak ikisi birden olamaz.
 
+## Kuyruklar
+
+- `core/queue/queue.ts` SADECE BullMQ bağlantısını, varsayılan job ayarlarını ve
+  `createQueue` / `createWorker` yardımcılarını tutar. Kuyruk, işini taşıdığı modüle aittir:
+  `<ad>.queue.ts` (kuyruk adı, job adları, tipli payload'lar, kuyruğun kendisi) ve
+  `<ad>.worker.ts` (index.ts'in çağırdığı bir `start<Ad>Worker()`). Core'da kuyruk tanımlanmaz.
+- Kuyruk ve worker her zaman bu yardımcılarla oluşturulur — hata loglamayı bağlarlar ve düzgün
+  kapanış için kayıt ederler. Çıplak `new Queue()` / `new Worker()` hiç kapatılmaz.
+- Job payload'ı satırı değil id'leri (ve sahibi olan `userId`'yi) taşır; worker servis
+  üzerinden yeniden okur, sahiplik her yerde olduğu gibi sorgunun parçasıdır.
+- Worker'lar idempotent'tir (job'lar tekrar dener) ve DB'yi kendileri sorgulamaz — bunu yapan
+  tek katman yine servistir. Bilinmeyen job adı hata fırlatır, sessizce tamamlanmış sayılmaz.
+- Kuyruğa ekleme, yazma commit edildikten sonra yapılır, asla önce değil.
+- Redis job'ları tuttuğu için `noeviction` + AOF ile çalışır. Redis'in başka kullanımları yeni
+  bağlantı açmaz, `core/redis/client.ts`'teki ortak `redis` client'ından geçer.
+- Zamanlayıcıyla dönen işler (`log-prune.job.ts`) ayrı, eski bir desendir; bilinçli olarak
+  BullMQ job scheduler'a taşınmadıkça olduğu gibi kalır.
+
 ## Baştan kabul edilen kurallar
 
 - Public (auth'suz) her uç rate-limit'li ve sıkı doğrulamalı olmak zorunda; yanıt gövdesi
@@ -87,7 +106,8 @@ paylaşılır, modüle taşınmaz.
 - Tutar/kritik hesap yalnız sunucuda, transaction içinde; istemciden gelen hesaplanmış değere
   güvenilmez.
 - Diske dokunan tek dosya `core/storage/storage.service.ts`.
-- Tek API instance varsayımı (WS state in-memory) — ölçek gerekirse önce Redis pub/sub.
+- Tek API instance varsayımı (WS state in-memory) — ölçek gerekirse önce `broadcastToUser()`
+  arkasına Redis pub/sub. Redis zaten var; pub/sub yok.
 - Yüklenen dosyalar `UPLOAD_DIR` altında; prod'da volume yedeklemesi pgdata kadar önemli.
 
 ## Yerel kurallar

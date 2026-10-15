@@ -4,6 +4,7 @@ import { db } from "../../core/db/client.js";
 import { examples } from "../../core/db/schema/index.js";
 import { HttpError } from "../../core/http/middleware/errorHandler.js";
 import { deleteFile } from "../../core/storage/storage.service.js";
+import { ExampleJob, exampleQueue } from "./example.queue.js";
 
 /**
  * The ONLY layer that talks to the database for this module. Controllers never build queries
@@ -53,12 +54,13 @@ export async function createExample(userId: string, input: ExampleCreateInput) {
             status: input.status,
         })
         .returning();
+    if (row!.status === "published") await enqueuePublished(userId, row!.id);
     return row!;
 }
 
 export async function updateExample(userId: string, id: string, input: ExampleUpdateInput) {
     // Runs first so a foreign id fails with 404 before anything is written.
-    await getExample(userId, id);
+    const current = await getExample(userId, id);
 
     const [row] = await db
         .update(examples)
@@ -70,6 +72,10 @@ export async function updateExample(userId: string, id: string, input: ExampleUp
         })
         .where(eq(examples.id, id))
         .returning();
+    // Only the transition into `published` triggers the job, not every save of a published row.
+    if (row!.status === "published" && current.status !== "published") {
+        await enqueuePublished(userId, id);
+    }
     return row!;
 }
 
@@ -84,6 +90,16 @@ export async function softDeleteExample(userId: string, id: string) {
         .set({ isDeleted: true, updatedAt: new Date() })
         .where(eq(examples.id, id));
     await deleteFile(userId, row.imageUrl);
+}
+
+/**
+ * Enqueued AFTER the row is committed, so the worker can never pick up an id that does not
+ * exist yet. The flip side: if Redis is down the request fails although the row is saved.
+ * When losing a job is not acceptable, write it to an outbox table in the same transaction
+ * and enqueue from there instead.
+ */
+async function enqueuePublished(userId: string, exampleId: string) {
+    await exampleQueue.add(ExampleJob.Published, { userId, exampleId });
 }
 
 /** Anonymous surface: published rows only, no owner filter, deliberately small. */

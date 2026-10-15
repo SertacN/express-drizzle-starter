@@ -8,15 +8,15 @@ ready to run, `apps/web` is empty — you pick the frontend framework when the p
 What comes with it: JWT auth (access + refresh, with rotation and reuse detection) over two
 transports — Bearer tokens by default, httpOnly cookies for browsers that want them — role-based
 guards, image uploads (re-encoded to WebP by sharp), a WebSocket server, error and slow-request
-logging into the database, a Postgres-only compose file for development and a Traefik-labelled
-one for production.
+logging into the database, background jobs on Redis + BullMQ, a Postgres + Redis compose file
+for development and a Traefik-labelled one for production.
 
 ## Quick start
 
 ```bash
 cp .env.example .env                              # change the JWT secrets
 pnpm install
-docker compose -f docker-compose.dev.yml up -d    # postgres only
+docker compose -f docker-compose.dev.yml up -d    # postgres + redis
 pnpm --filter shared build                        # api needs shared's dist
 pnpm --filter api db:migrate
 pnpm dev                                          # api on :3000
@@ -62,15 +62,17 @@ curl -b cookies.txt localhost:3000/api/v1/auth/me
 
 ```
 apps/api/src/
-├─ index.ts          bootstrap: http + ws + jobs
+├─ index.ts          bootstrap: http + ws + jobs + queue workers, graceful shutdown
 ├─ app.ts            express setup (helmet, cors, static, rate limit, errorHandler)
 ├─ router.ts         EVERY mount in one file, grouped by audience
 ├─ core/             NOTHING module-specific lives here
 │  ├─ config/env.ts  env validated with zod — a bad deploy fails at boot
 │  ├─ db/            client, migrate, schema/ (tables), migrations/
-│  ├─ http/          health + middleware (auth, errorHandler, rateLimit, requestLog, upload)
+│  ├─ http/          health (db + redis) + middleware (auth, errorHandler, rateLimit, requestLog, upload)
 │  ├─ observability/ log WRITING + the pruning job
+│  ├─ queue/         BullMQ connection, default job options, createQueue/createWorker
 │  ├─ realtime/      WebSocket server
+│  ├─ redis/         client.ts — a shared Redis client for cache/locks
 │  ├─ storage/       the ONLY file that touches the disk
 │  └─ utils/         jwt, password, logger, refresh-token
 └─ modules/          product code: auth/ example/ uploads/
@@ -92,6 +94,8 @@ modules/<name>/
 ├─ <name>.controller.ts  req/res + zod parse; NO try/catch (Express 5 routes errors to errorHandler)
 ├─ <name>.routes.ts      path ↔ handler + middleware, nothing else
 ├─ public.routes.ts      (optional) the same module's anonymous surface — one service, one schema
+├─ <name>.queue.ts       (optional) queue name + typed job names and payloads + the queue
+├─ <name>.worker.ts      (optional) the worker for that queue, started from src/index.ts
 └─ index.ts              the module's public API
 ```
 
@@ -169,6 +173,50 @@ The only file that touches the disk is `core/storage/storage.service.ts` — swi
 mean changing that file and nothing else. **In production, backing up the `uploads` volume matters
 as much as `pgdata`: those files are not in the database dump.**
 
+## Queues
+
+Redis + BullMQ. `core/queue/queue.ts` sets the connection (`REDIS_URL`) and the default job
+options once — 3 attempts with exponential backoff, finished jobs capped — and exposes two
+helpers, `createQueue` and `createWorker`, that also attach error logging and register
+everything for graceful shutdown. It owns no queue. A queue belongs to the module whose work it
+carries, the same way a table does:
+
+```ts
+// <name>.queue.ts — the contract both ends import
+export const NOTES_QUEUE = "notes";
+export const NotesJob = { Index: "index" } as const;
+export interface NotesIndexJobData {
+    userId: string;
+    noteId: string;
+}
+export const notesQueue = createQueue<NotesIndexJobData>(NOTES_QUEUE);
+
+// <name>.service.ts — producer, after the row is written
+await notesQueue.add(NotesJob.Index, { userId, noteId });
+
+// <name>.worker.ts — consumer, exported from index.ts and started in src/index.ts
+export function startNotesWorker() {
+    return createWorker<NotesIndexJobData>(NOTES_QUEUE, async (job) => {
+        /* switch on job.name */
+    });
+}
+```
+
+`modules/example/` has a working one: publishing an example enqueues a job, the worker re-reads
+the row and pushes `example.published` over the WebSocket.
+
+- A job carries **ids, not rows** — plus the `userId`, because ownership is part of every query
+  in a worker too. The worker re-reads through the service.
+- **Workers are idempotent**: a failed or interrupted job runs again.
+- Workers run **inside the API process**. On SIGTERM `index.ts` stops taking requests, lets the
+  workers finish their running jobs, then closes Redis and the pool. Splitting workers out later
+  means a second entrypoint that calls the same `start…Worker()` functions.
+- Enqueueing happens after the write, outside the transaction: if Redis is down the request
+  fails with the row already saved. When a lost job is unacceptable, use an outbox table.
+- Redis runs with `noeviction` and AOF on — it holds jobs, so it is treated like a database,
+  not a cache. For anything else (a cache entry, a lock) import the shared client:
+  `import { redis } from "../../core/redis/client.js"`.
+
 ## Logs
 
 Only the interesting requests are written to `app_logs`: failed (>= 400) or slow (>= 3s).
@@ -242,12 +290,13 @@ external `traefik-net` network — it does not start Traefik itself. Entrypoint 
 resolver `letsencrypt`; change the labels if yours are named differently.
 
 ```bash
-cp .env.example .env      # DOMAIN, DB_*, JWT_* → real values
+cp .env.example .env      # DOMAIN, DB_*, JWT_*, REDIS_PASSWORD → real values
 docker compose up -d --build
 docker compose exec api node dist/core/db/migrate.js
 ```
 
-Postgres sits on the `internal` network only; neither the outside world nor Traefik can reach it.
+Postgres and Redis sit on the `internal` network only; neither the outside world nor Traefik can
+reach them. Redis also requires `REDIS_PASSWORD`; compose builds the API's `REDIS_URL` from it.
 Uploaded files persist in the `uploads` volume.
 
 ### Deploying on push
@@ -332,6 +381,7 @@ When you change the rules, update `CLAUDE.md` too — a stale rules file is wors
 - [ ] `modules/example/`, `schema/examples.ts`, `validators/example.ts`,
       `api-client/example.service.ts` → delete them or grow them into your first real module
 - [ ] Delete `core/realtime/` (WebSocket) or `core/storage/` + `modules/uploads/` if you do not
-      need them
+      need them; without background jobs, drop `core/queue/`, `core/redis/` and the `redis`
+      services too
 - [ ] Install a framework in `apps/web`, uncomment the `web` service in the compose file
 - [ ] If you use an AI tool other than Claude Code, copy `CLAUDE.md` into its rules file

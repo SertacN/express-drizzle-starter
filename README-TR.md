@@ -8,14 +8,15 @@ durumda gelir, `apps/web` boştur — frontend framework'ünü proje başında s
 Hazır gelenler: iki taşıma üzerinden JWT auth (access + refresh, rotation ve çalınma
 tespitiyle) — varsayılan Bearer token, isteyen tarayıcı için httpOnly cookie —, rol tabanlı
 yetki, görsel yükleme (sharp ile WebP'ye dönüştürme), WebSocket, DB'ye yazan hata/yavaş istek
-logu, dev için Docker Postgres, prod için Traefik'e bağlanan compose.
+logu, Redis + BullMQ ile arka plan işleri, dev için Docker Postgres + Redis, prod için
+Traefik'e bağlanan compose.
 
 ## Hızlı başlangıç
 
 ```bash
 cp .env.example .env                              # JWT secret'larını değiştir
 pnpm install
-docker compose -f docker-compose.dev.yml up -d    # yalnız postgres
+docker compose -f docker-compose.dev.yml up -d    # postgres + redis
 pnpm --filter shared build                        # api shared'ın dist'ini görmeli
 pnpm --filter api db:migrate
 pnpm dev                                          # api :3000
@@ -61,15 +62,17 @@ curl -b cookies.txt localhost:3000/api/v1/auth/me
 
 ```
 apps/api/src/
-├─ index.ts          bootstrap: http + ws + job'lar
+├─ index.ts          bootstrap: http + ws + job'lar + kuyruk worker'ları, düzgün kapanış
 ├─ app.ts            express kurulumu (helmet, cors, static, rate-limit, errorHandler)
 ├─ router.ts         TÜM mount'lar tek dosyada, kitleye göre gruplu
 ├─ core/             modüle özel HİÇBİR şey yok
 │  ├─ config/env.ts  zod ile doğrulanan env — hatalı deploy boot'ta patlar
 │  ├─ db/            client, migrate, schema/ (tablolar), migrations/
-│  ├─ http/          health + middleware (auth, errorHandler, rateLimit, requestLog, upload)
+│  ├─ http/          health (db + redis) + middleware (auth, errorHandler, rateLimit, requestLog, upload)
 │  ├─ observability/ log YAZMA + budama job'ı
+│  ├─ queue/         BullMQ bağlantısı, varsayılan job ayarları, createQueue/createWorker
 │  ├─ realtime/      WebSocket sunucusu
+│  ├─ redis/         client.ts — cache/lock için ortak Redis client'ı
 │  ├─ storage/       diske dokunan TEK dosya
 │  └─ utils/         jwt, password, logger, refresh-token
 └─ modules/          ürün kodu: auth/ example/ uploads/
@@ -91,6 +94,8 @@ modules/<ad>/
 ├─ <ad>.controller.ts  req/res + zod parse; try/catch YOK (Express 5 hatayı errorHandler'a atar)
 ├─ <ad>.routes.ts      yalnız path ↔ handler + middleware
 ├─ public.routes.ts    (opsiyonel) aynı modülün anonim yüzeyi — servis ve şema tek kopya kalır
+├─ <ad>.queue.ts       (opsiyonel) kuyruk adı + tipli job adları ve payload'lar + kuyruk
+├─ <ad>.worker.ts      (opsiyonel) o kuyruğun worker'ı, src/index.ts'te başlatılır
 └─ index.ts            modülün public API'si
 ```
 
@@ -168,6 +173,51 @@ Diske dokunan tek dosya `core/storage/storage.service.ts` — S3'e geçiş o dos
 sınırlı kalmalı. **Prod'da `uploads` volume'ünün yedeği `pgdata` kadar önemlidir: dosyalar DB
 dump'ında yoktur.**
 
+## Kuyruklar
+
+Redis + BullMQ. `core/queue/queue.ts` bağlantıyı (`REDIS_URL`) ve varsayılan job ayarlarını bir
+kez kurar — üstel backoff ile 3 deneme, biten işlerde üst sınır — ve iki yardımcı sunar:
+`createQueue` ile `createWorker`. Bunlar hata loglamayı da bağlar ve her şeyi düzgün kapanış
+için kayıt eder. Hiçbir kuyruğun sahibi değildir. Kuyruk, tıpkı bir tablo gibi, işini taşıdığı
+modüle aittir:
+
+```ts
+// <ad>.queue.ts — iki ucun da import ettiği sözleşme
+export const NOTES_QUEUE = "notes";
+export const NotesJob = { Index: "index" } as const;
+export interface NotesIndexJobData {
+    userId: string;
+    noteId: string;
+}
+export const notesQueue = createQueue<NotesIndexJobData>(NOTES_QUEUE);
+
+// <ad>.service.ts — üretici, satır yazıldıktan sonra
+await notesQueue.add(NotesJob.Index, { userId, noteId });
+
+// <ad>.worker.ts — tüketici, index.ts'ten export edilir ve src/index.ts'te başlatılır
+export function startNotesWorker() {
+    return createWorker<NotesIndexJobData>(NOTES_QUEUE, async (job) => {
+        /* job.name'e göre switch */
+    });
+}
+```
+
+`modules/example/` içinde çalışan bir örnek var: bir example yayınlanınca job kuyruğa girer,
+worker satırı yeniden okur ve WebSocket'ten `example.published` gönderir.
+
+- Job **satırı değil id'leri** taşır — artı `userId`, çünkü sahiplik worker'da da her sorgunun
+  parçası. Worker servis üzerinden yeniden okur.
+- **Worker'lar idempotent'tir**: başarısız ya da yarıda kalan job tekrar çalışır.
+- Worker'lar **API process'inin içinde** çalışır. SIGTERM gelince `index.ts` istek almayı
+  keser, worker'ların elindeki job'ları bitirmesini bekler, sonra Redis'i ve pool'u kapatır.
+  Worker'ları sonradan ayırmak, aynı `start…Worker()` fonksiyonlarını çağıran ikinci bir
+  entrypoint demek.
+- Kuyruğa ekleme yazmadan sonra, transaction dışında olur: Redis çökmüşse satır kaydedilmiş
+  hâlde istek hata döner. Kaybolan job kabul edilemiyorsa outbox tablosu kullan.
+- Redis `noeviction` ve AOF açık çalışır — job'ları tuttuğu için cache değil veritabanı gibi
+  ele alınır. Başka her şey için (cache, lock) ortak client'ı import et:
+  `import { redis } from "../../core/redis/client.js"`.
+
 ## Loglar
 
 Yalnız ilgi çeken istekler `app_logs` tablosuna yazılır: hata (>= 400) veya yavaş (>= 3 sn).
@@ -241,12 +291,13 @@ instance'ı varsayar — Traefik'i kendisi başlatmaz. Entrypoint `https`, cert 
 `letsencrypt`; seninkiler farklıysa label'ları değiştir.
 
 ```bash
-cp .env.example .env      # DOMAIN, DB_*, JWT_* → gerçek değerler
+cp .env.example .env      # DOMAIN, DB_*, JWT_*, REDIS_PASSWORD → gerçek değerler
 docker compose up -d --build
 docker compose exec api node dist/core/db/migrate.js
 ```
 
-Postgres yalnız `internal` ağında; dışarıdan ve Traefik'ten erişilemez. Yüklenen dosyalar
+Postgres ve Redis yalnız `internal` ağında; dışarıdan ve Traefik'ten erişilemez. Redis ayrıca
+`REDIS_PASSWORD` ister; API'nin `REDIS_URL`'ini compose ondan kurar. Yüklenen dosyalar
 `uploads` volume'ünde kalıcıdır.
 
 ### Push'ta deploy
@@ -334,7 +385,8 @@ kötüdür.
 - [ ] `modules/example/`, `schema/examples.ts`, `validators/example.ts`,
       `api-client/example.service.ts` → sil veya ilk gerçek modülüne dönüştür
 - [ ] İhtiyacın yoksa `core/realtime/` (WebSocket) veya `core/storage/` + `modules/uploads/`
-      klasörlerini sil
+      klasörlerini sil; arka plan işi yoksa `core/queue/`, `core/redis/` ve `redis` servislerini
+      de kaldır
 - [ ] `apps/web`'e framework kur, compose'daki `web` servisini aç
 - [ ] Claude Code dışında bir yapay zeka aracı kullanacaksan `CLAUDE.md`'yi o aracın kural
       dosyasına kopyala
